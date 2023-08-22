@@ -13,8 +13,8 @@ This repository contains the official implementation of the CVPR 2023 paper "Rea
 ## Highlights
 
 - **New Task:** It is the first time that the task of instance-level multi-person eyeblink detection in untrimmed videos is formally defined and explored. We think that a good multi-person eyeblink detection algorithm should be able to (1) detect and track human instances’ faces reliably to ensure the instance-level analysis ability along the whole video, and (2) detect eyeblink boundaries accurately within each human instance to ensure the precise awareness of their eyeblink behaviors. We design new metrics to give attention to both instance awareness quality and eyeblink detection quality;
-- **New Dataset:** To supporting this research task, we introduce [MPEblink](https://doi.org/10.5281/zenodo.7754768). It is featured with multi-instance, unconstrained, and untrimmed, which makes it more challenging and offer a closer correspondence to real-world demands;
-- **New Framework:** We propose a one-stage multi-person eyeblink detection method InstBlink. It can jointly perform face detection, tracking, and instance-level eyeblink detection. Such a task-joint paradigm can benefit the sub-tasks uniformly. Benefited from the one-stage design, InstBlink also show high efficiency especially in multi-instance scenarios.
+- **New Dataset:** To support this research task, we introduce [MPEblink](https://doi.org/10.5281/zenodo.7754768). It is featured with multi-instance, unconstrained, and untrimmed, which makes it more challenging and offers a closer correspondence to real-world demands;
+- **New Framework:** We propose a one-stage multi-person eyeblink detection method InstBlink. It can jointly perform face detection, tracking, and instance-level eyeblink detection. Such a task-joint paradigm can benefit the sub-tasks uniformly. Benefited from the one-stage design, InstBlink also shows high efficiency especially in multi-instance scenarios.
 <!-- <div align="center">
 <img src="pictures/fig1.png" width="75%"/>
 </div> -->
