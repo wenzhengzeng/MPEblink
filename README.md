@@ -1,25 +1,55 @@
-# Real-time Multi-person Eyeblink Detection in the Wild for Untrimmed Video (CVPR 2023)
-[Wenzheng Zeng](https://wenzhengzeng.github.io/)<sup>1</sup>, [Yang Xiao](https://scholar.google.com/citations?user=NeKBuXEAAAAJ)<sup>1†</sup>, Sicheng Wei<sup>1</sup>, Jinfang Gan<sup>1</sup>, Xintao Zhang<sup>1</sup>, [Zhiguo Cao](https://scholar.google.com/citations?user=396o2BAAAAAJ)<sup>1</sup>, [Zhiwen Fang](https://scholar.google.com/citations?user=UX5N_FQAAAAJ)<sup>2</sup>, [Joey Tianyi Zhou](https://joeyzhouty.github.io/)<sup>3</sup>.
 
-<sup>1</sup>Huazhong University of Science and Technology, <sup>2</sup>Southern Medical University, <sup>3</sup>A*STAR.
+<p align="center">
+  <h1 align="center">Real-time Multi-person Eyeblink Detection in the Wild <br>for Untrimmed Video</h1>
+  <p align="center">
+    <a href="https://wenzhengzeng.github.io/">Wenzheng Zeng</a><sup>1</sup>,
+<!--     · -->
+    <a href="https://scholar.google.com/citations?user=NeKBuXEAAAAJ">Yang Xiao</a><sup>1</sup>,
+<!--     · -->
+    Sicheng Wei<sup>1</sup>,
+<!--     · -->
+    <a>Jinfang Gan</a><sup>1</sup>,
+<!--     · -->
+    <a>Xintao Zhang</a><sup>1</sup>,
+<!--     · -->
+    <a href="https://scholar.google.com/citations?user=396o2BAAAAAJ">Zhiguo Cao</a><sup>1</sup>,
+<!--     · -->
+    <a href="https://scholar.google.com/citations?user=UX5N_FQAAAAJ">Zhiwen Fang</a><sup>2</sup>,
+<!--     · -->
+    <a href="https://joeyzhouty.github.io/">Joey Tianyi Zhou</a><sup>3</sup>
+    
+  </p>
+  <p align="center"><sup>1</sup>Huazhong University of Science and Technology, <sup>2</sup>Southern Medical University, <sup>3</sup>A*STAR </p>
+  <h3 align="center">CVPR 2023</h3>
 
-<img src="pictures/demo1.gif" width="50%"/><img src="pictures/demo2.gif" width="50%"/>
+  <h3 align="center"> <a href="https://wenzhengzeng.github.io/mpeblink/">Project Page</a> | <a href="https://arxiv.org/abs/2303.16053">Paper</a> | <a href="https://www.youtube.com/watch?v=ngME7dym0Uk">Video</a> | <a href="https://wenzhengzeng.github.io/mpeblink/static/images/cvpr23_poster.pdf">Poster</a> | <a href="https://zenodo.org/record/7754768">Dataset</a> | <a href="https://github.com/wenzhengzeng/mpeblink/blob/main/README.md#L92">Demo</a></h3>
+    <h3 align="center"> <a href="https://paperswithcode.com/sota/on-mpeblink?p=real-time-multi-person-eyeblink-detection-in">
+  <img src="https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/real-time-multi-person-eyeblink-detection-in/on-mpeblink" alt="PWC">
+</a> </h3>
+  <div align="center"></div>
+</p>
+<p align="center">
+    <img src="pictures/demo1.gif" width="50%"/><img src="pictures/demo2.gif" width="50%"/>
+<!--    This repository contains the official implementation of the CVPR 2023 paper: "Real-time Multi-person Eyeblink Detection in the Wild for Untrimmed Video". <br> -->
 
-### [Project](https://wenzhengzeng.github.io/mpeblink/) | [Paper](https://wenzhengzeng.github.io/mpeblink/static/images/mpeblink.pdf) | [arXiv](https://arxiv.org/abs/2303.16053) | [Video](https://www.youtube.com/watch?v=ngME7dym0Uk) | [Poster](https://wenzhengzeng.github.io/mpeblink/static/images/cvpr23_poster.pdf) | [Dataset](https://zenodo.org/record/7754768)
-
+<!--    The official implementation of the CVPR 2023 paper: "Real-time Multi-person Eyeblink Detection in the Wild for Untrimmed Video". -->
+</p>
 This repository contains the official implementation of the CVPR 2023 paper "Real-time Multi-person Eyeblink Detection in the Wild for Untrimmed Video".
 
 
-## Highlights
+
+## 🔆 Highlights 
 
 - **New Task:** It is the first time that the task of instance-level multi-person eyeblink detection in untrimmed videos is formally defined and explored. We think that a good multi-person eyeblink detection algorithm should be able to (1) detect and track human instances’ faces reliably to ensure the instance-level analysis ability along the whole video, and (2) detect eyeblink boundaries accurately within each human instance to ensure the precise awareness of their eyeblink behaviors. We design new metrics to give attention to both instance awareness quality and eyeblink detection quality;
 - **New Dataset:** To support this research task, we introduce [MPEblink](https://doi.org/10.5281/zenodo.7754768). It is featured with multi-instance, unconstrained, and untrimmed, which makes it more challenging and offers a closer correspondence to real-world demands;
 - **New Framework:** We propose a one-stage multi-person eyeblink detection method InstBlink. It can jointly perform face detection, tracking, and instance-level eyeblink detection. Such a task-joint paradigm can benefit the sub-tasks uniformly. Benefited from the one-stage design, InstBlink also shows high efficiency especially in multi-instance scenarios.
+- **Open Source:** We release the dataset, model, and code for training, testing, and demo, aiming to foster progress in relevant research fields.
+
 <!-- <div align="center">
 <img src="pictures/fig1.png" width="75%"/>
 </div> -->
 
-## Implementation of InstBlink
+## 🚀 Implementation of InstBlink
 <!-- <div align="center">
 <img src="pictures/instblink.png" width="80%"/>
 </div> -->
@@ -84,11 +114,11 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
   bash tools/train.sh
   ```
 
-## Acknowledgement
+## ❤️ Acknowledgement
 
 This code is inspired by [TeViT](https://github.com/hustvl/TeViT) and [MMDetection](https://github.com/open-mmlab/mmdetection). Thanks for their great contributions on the computer vision community.
 
-## Citation
+## 🎓 Citation
 
 If you find our work useful in your research, please consider to cite our paper:
 
