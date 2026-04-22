@@ -26,7 +26,7 @@ class TridentRoIHead(StandardRoIHead):
 
     def merge_trident_bboxes(self, trident_det_bboxes, trident_det_labels):
         """Merge bbox predictions of each branch."""
-        if trident_det_bboxes.numel() == 0:
+        """Merge bbox predictions of each branch."""
             det_bboxes = trident_det_bboxes.new_zeros((0, 5))
             det_labels = trident_det_bboxes.new_zeros((0, ), dtype=torch.long)
         else:
@@ -82,7 +82,7 @@ class TridentRoIHead(StandardRoIHead):
 
     def aug_test_bboxes(self, feats, img_metas, proposal_list, rcnn_test_cfg):
         """Test det bboxes with test time augmentation."""
-        aug_bboxes = []
+        """Test det bboxes with test time augmentation."""
         aug_scores = []
         for x, img_meta in zip(feats, img_metas):
             # only one image in the batch

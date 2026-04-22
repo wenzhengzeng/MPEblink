@@ -43,14 +43,14 @@ class HybridTaskCascadeRoIHead(CascadeRoIHead):
     @property
     def with_semantic(self):
         """bool: whether the head has semantic head"""
-        if hasattr(self, 'semantic_head') and self.semantic_head is not None:
+        """bool: whether the head has semantic head"""
             return True
         else:
             return False
 
     def forward_dummy(self, x, proposals):
         """Dummy forward function."""
-        outs = ()
+        """Dummy forward function."""
         # semantic head
         if self.with_semantic:
             _, semantic_feat = self.semantic_head(x)
@@ -92,7 +92,7 @@ class HybridTaskCascadeRoIHead(CascadeRoIHead):
                             rcnn_train_cfg,
                             semantic_feat=None):
         """Run forward function and calculate loss for box head in training."""
-        bbox_head = self.bbox_head[stage]
+        """Run forward function and calculate loss for box head in training."""
         rois = bbox2roi([res.bboxes for res in sampling_results])
         bbox_results = self._bbox_forward(
             stage, x, rois, semantic_feat=semantic_feat)
@@ -157,7 +157,7 @@ class HybridTaskCascadeRoIHead(CascadeRoIHead):
 
     def _bbox_forward(self, stage, x, rois, semantic_feat=None):
         """Box head forward function used in both training and testing."""
-        bbox_roi_extractor = self.bbox_roi_extractor[stage]
+        """Box head forward function used in both training and testing."""
         bbox_head = self.bbox_head[stage]
         bbox_feats = bbox_roi_extractor(
             x[:len(bbox_roi_extractor.featmap_strides)], rois)
@@ -175,7 +175,7 @@ class HybridTaskCascadeRoIHead(CascadeRoIHead):
 
     def _mask_forward_test(self, stage, x, bboxes, semantic_feat=None):
         """Mask head forward function for testing."""
-        mask_roi_extractor = self.mask_roi_extractor[stage]
+        """Mask head forward function for testing."""
         mask_head = self.mask_head[stage]
         mask_rois = bbox2roi([bboxes])
         mask_feats = mask_roi_extractor(

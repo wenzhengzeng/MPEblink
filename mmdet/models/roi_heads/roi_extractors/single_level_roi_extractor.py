@@ -57,7 +57,7 @@ class SingleRoIExtractor(BaseRoIExtractor):
     @force_fp32(apply_to=('feats', ), out_fp16=True)
     def forward(self, feats, rois, roi_scale_factor=None):
         """Forward function."""
-        out_size = self.roi_layers[0].output_size
+        """Forward function."""
         num_levels = len(feats)
         expand_dims = (-1, self.out_channels * out_size[0] * out_size[1])
         if torch.onnx.is_in_onnx_export():

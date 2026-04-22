@@ -23,6 +23,7 @@ class BBoxHead(BaseModule):
                  roi_feat_size=7,
                  in_channels=256,
                  num_classes=80,
+                 with_eye_query = False,
                  bbox_coder=dict(
                      type='DeltaXYWHBBoxCoder',
                      clip_border=True,
@@ -53,6 +54,7 @@ class BBoxHead(BaseModule):
         self.reg_predictor_cfg = reg_predictor_cfg
         self.cls_predictor_cfg = cls_predictor_cfg
         self.fp16_enabled = False
+        self.with_eye_query = with_eye_query
 
         self.bbox_coder = build_bbox_coder(bbox_coder)
         self.loss_cls = build_loss(loss_cls)
@@ -72,7 +74,7 @@ class BBoxHead(BaseModule):
             self.fc_cls = build_linear_layer(
                 self.cls_predictor_cfg,
                 in_features=in_channels,
-                out_features=cls_channels) 
+                out_features=cls_channels)
         if self.with_reg:
             out_dim_reg = 4 if reg_class_agnostic else 4 * num_classes
             self.fc_reg = build_linear_layer(
@@ -429,32 +431,68 @@ class BBoxHead(BaseModule):
             >>>                    pos_is_gts, img_metas)
             >>> print(bboxes_list)
         """
-        img_ids = rois[:, 0].long().unique(sorted=True) # Extract the img_id. rois [b*t*num_proposals,5] 5: img_id for 1 and  bbox for 4 
+        img_ids = rois[:, 0].long().unique(sorted=True)
         assert img_ids.numel() <= len(img_metas)
 
-        bboxes_list = []
-        for i in range(len(img_metas)): # for each frame
-            inds = torch.nonzero(
-                rois[:, 0] == i, as_tuple=False).squeeze(dim=1)
-            num_rois = inds.numel()
 
-            bboxes_ = rois[inds, 1:]    # [num_proposal,4]
-            label_ = labels[inds]   # [num_proposal]
-            bbox_pred_ = bbox_preds[inds] 
-            img_meta_ = img_metas[i]
-            pos_is_gts_ = pos_is_gts[i]
+        if self.with_eye_query:
 
-            bboxes = self.regress_by_class(bboxes_, label_, bbox_pred_,
-                                           img_meta_)   # update bbox [x1,y1,x2,y2]
+            num_proposals = bbox_preds.shape[0]//len(img_metas)//2
+            inst_bboxes_list = []
+            eye_bboxes_list = []
+            all_bboxes_list = []
+            for i in range(len(img_metas)):
+                inds = torch.nonzero(
+                    rois[:, 0] == i, as_tuple=False).squeeze(dim=1)
+                num_rois = inds.numel()
 
-            # filter gt bboxes
-            pos_keep = 1 - pos_is_gts_
-            keep_inds = pos_is_gts_.new_ones(num_rois)
-            keep_inds[:len(pos_is_gts_)] = pos_keep
+                bboxes_ = rois[inds, 1:]
+                label_ = labels[inds]
+                bbox_pred_ = bbox_preds[inds]
+                img_meta_ = img_metas[i]
+                pos_is_gts_ = pos_is_gts[i]
 
-            bboxes_list.append(bboxes[keep_inds.type(torch.bool)])
+                bboxes = self.regress_by_class(bboxes_, label_, bbox_pred_,
+                                            img_meta_)
 
-        return bboxes_list
+                # filter gt bboxes
+                pos_keep = 1 - pos_is_gts_
+                keep_inds = pos_is_gts_.new_ones(num_rois)
+                keep_inds[:len(pos_is_gts_)] = pos_keep
+
+                inst_bboxes_list.append(bboxes[keep_inds.type(torch.bool)][:num_proposals, :])
+                eye_bboxes_list.append(bboxes[keep_inds.type(torch.bool)][num_proposals:, :])
+                all_bboxes_list.append(bboxes[keep_inds.type(torch.bool)])
+            
+            return inst_bboxes_list, eye_bboxes_list, all_bboxes_list
+
+
+
+        else:
+
+            bboxes_list = []
+            for i in range(len(img_metas)):
+                inds = torch.nonzero(
+                    rois[:, 0] == i, as_tuple=False).squeeze(dim=1)
+                num_rois = inds.numel()
+
+                bboxes_ = rois[inds, 1:]
+                label_ = labels[inds]
+                bbox_pred_ = bbox_preds[inds]
+                img_meta_ = img_metas[i]
+                pos_is_gts_ = pos_is_gts[i]
+
+                bboxes = self.regress_by_class(bboxes_, label_, bbox_pred_,
+                                            img_meta_)
+
+                # filter gt bboxes
+                pos_keep = 1 - pos_is_gts_
+                keep_inds = pos_is_gts_.new_ones(num_rois)
+                keep_inds[:len(pos_is_gts_)] = pos_keep
+
+                bboxes_list.append(bboxes[keep_inds.type(torch.bool)])
+
+            return bboxes_list
 
     @force_fp32(apply_to=('bbox_pred', ))
     def regress_by_class(self, rois, label, bbox_pred, img_meta):

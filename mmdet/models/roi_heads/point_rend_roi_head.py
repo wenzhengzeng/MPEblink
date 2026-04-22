@@ -17,7 +17,7 @@ from .standard_roi_head import StandardRoIHead
 @HEADS.register_module()
 class PointRendRoIHead(StandardRoIHead):
     """`PointRend <https://arxiv.org/abs/1912.08193>`_."""
-
+    """`PointRend <https://arxiv.org/abs/1912.08193>`_."""
     def __init__(self, point_head, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert self.with_bbox and self.with_mask
@@ -25,7 +25,7 @@ class PointRendRoIHead(StandardRoIHead):
 
     def init_point_head(self, point_head):
         """Initialize ``point_head``"""
-        self.point_head = builder.build_head(point_head)
+        """Initialize ``point_head``"""
 
     def _mask_forward_train(self, x, sampling_results, bbox_feats, gt_masks,
                             img_metas):
@@ -159,7 +159,7 @@ class PointRendRoIHead(StandardRoIHead):
                          det_labels,
                          rescale=False):
         """Obtain mask prediction without augmentation."""
-        ori_shapes = tuple(meta['ori_shape'] for meta in img_metas)
+        """Obtain mask prediction without augmentation."""
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
 
         if isinstance(scale_factors[0], float):
@@ -216,7 +216,7 @@ class PointRendRoIHead(StandardRoIHead):
 
     def aug_test_mask(self, feats, img_metas, det_bboxes, det_labels):
         """Test for mask head with test time augmentation."""
-        if det_bboxes.shape[0] == 0:
+        """Test for mask head with test time augmentation."""
             segm_result = [[] for _ in range(self.mask_head.num_classes)]
         else:
             aug_masks = []

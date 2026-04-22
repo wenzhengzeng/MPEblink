@@ -51,6 +51,7 @@ class DIIHead(BBoxHead):
                  num_reg_fcs=3,
                  feedforward_channels=2048,
                  in_channels=256,
+                 with_eye_query = False,
                  dropout=0.0,
                  ffn_act_cfg=dict(type='ReLU', inplace=True),
                  dynamic_conv_cfg=dict(
@@ -71,6 +72,7 @@ class DIIHead(BBoxHead):
             reg_decoded_bbox=True,
             reg_class_agnostic=True,
             init_cfg=init_cfg,
+            with_eye_query=with_eye_query,
             **kwargs)
         self.loss_iou = build_loss(loss_iou)
         self.in_channels = in_channels
@@ -117,6 +119,32 @@ class DIIHead(BBoxHead):
         # over load the self.fc_cls in BBoxHead
         self.fc_reg = nn.Linear(in_channels, 4)
 
+        if with_eye_query:
+            self.eye_cls_fcs = nn.ModuleList()
+            for _ in range(num_cls_fcs):
+                self.eye_cls_fcs.append(
+                    nn.Linear(in_channels, in_channels, bias=False))
+                self.eye_cls_fcs.append(
+                    build_norm_layer(dict(type='LN'), in_channels)[1])
+                self.eye_cls_fcs.append(
+                    build_activation_layer(dict(type='ReLU', inplace=True)))
+
+            # over load the self.fc_cls in BBoxHead
+            if self.loss_cls.use_sigmoid:
+                self.eye_fc_cls = nn.Linear(in_channels, self.num_classes)
+            else:
+                self.eye_fc_cls = nn.Linear(in_channels, self.num_classes + 1)
+
+            self.eye_reg_fcs = nn.ModuleList()
+            for _ in range(num_reg_fcs):
+                self.eye_reg_fcs.append(
+                    nn.Linear(in_channels, in_channels, bias=False))
+                self.eye_reg_fcs.append(
+                    build_norm_layer(dict(type='LN'), in_channels)[1])
+                self.eye_reg_fcs.append(
+                    build_activation_layer(dict(type='ReLU', inplace=True)))
+            # over load the self.fc_cls in BBoxHead
+            self.eye_fc_reg = nn.Linear(in_channels, 4)
 
         assert self.reg_class_agnostic, 'DIIHead only ' \
             'suppport `reg_class_agnostic=True` '
@@ -245,9 +273,9 @@ class DIIHead(BBoxHead):
                 dict[str, Tensor]: Dictionary of loss components
         """
         losses = dict()
-        bg_class_ind = self.num_classes # [0,n-1]: class, n: backgrounf class (none-object)
+        bg_class_ind = self.num_classes
         # note in spare rcnn num_gt == num_pos
-        pos_inds = (labels >= 0) & (labels < bg_class_ind) 
+        pos_inds = (labels >= 0) & (labels < bg_class_ind)
         num_pos = pos_inds.sum().float()
         avg_factor = reduce_mean(num_pos)
         if cls_score is not None:
@@ -267,7 +295,92 @@ class DIIHead(BBoxHead):
                 pos_bbox_pred = bbox_pred.reshape(bbox_pred.size(0),
                                                   4)[pos_inds.type(torch.bool)]
                 imgs_whwh = imgs_whwh.reshape(bbox_pred.size(0),
-                                              4)[pos_inds.type(torch.bool)] 
+                                              4)[pos_inds.type(torch.bool)]
+                losses['loss_bbox'] = self.loss_bbox(
+                    pos_bbox_pred / imgs_whwh,
+                    bbox_targets[pos_inds.type(torch.bool)] / imgs_whwh,
+                    bbox_weights[pos_inds.type(torch.bool)],
+                    avg_factor=avg_factor)
+                losses['loss_iou'] = self.loss_iou(
+                    pos_bbox_pred,
+                    bbox_targets[pos_inds.type(torch.bool)],
+                    bbox_weights[pos_inds.type(torch.bool)],
+                    avg_factor=avg_factor)
+            else:
+                losses['loss_bbox'] = bbox_pred.sum() * 0
+                losses['loss_iou'] = bbox_pred.sum() * 0
+        return losses
+    
+    @force_fp32(apply_to=('cls_score', 'bbox_pred'))
+    def eye_loss(self,
+             cls_score,
+             bbox_pred,
+             labels,
+             label_weights,
+             bbox_targets,
+             bbox_weights,
+             imgs_whwh=None,
+             reduction_override=None,
+             **kwargs):
+        """"Loss function of DIIHead, get loss of all images.
+
+        Args:
+            cls_score (Tensor): Classification prediction
+                results of all class, has shape
+                (batch_size * num_proposals_single_image, num_classes)
+            bbox_pred (Tensor): Regression prediction results,
+                has shape
+                (batch_size * num_proposals_single_image, 4), the last
+                dimension 4 represents [tl_x, tl_y, br_x, br_y].
+            labels (Tensor): Label of each proposals, has shape
+                (batch_size * num_proposals_single_image
+            label_weights (Tensor): Classification loss
+                weight of each proposals, has shape
+                (batch_size * num_proposals_single_image
+            bbox_targets (Tensor): Regression targets of each
+                proposals, has shape
+                (batch_size * num_proposals_single_image, 4),
+                the last dimension 4 represents
+                [tl_x, tl_y, br_x, br_y].
+            bbox_weights (Tensor): Regression loss weight of each
+                proposals's coordinate, has shape
+                (batch_size * num_proposals_single_image, 4),
+            imgs_whwh (Tensor): imgs_whwh (Tensor): Tensor with\
+                shape (batch_size, num_proposals, 4), the last
+                dimension means
+                [img_width,img_height, img_width, img_height].
+            reduction_override (str, optional): The reduction
+                method used to override the original reduction
+                method of the loss. Options are "none",
+                "mean" and "sum". Defaults to None,
+
+            Returns:
+                dict[str, Tensor]: Dictionary of loss components
+        """
+        losses = dict()
+        bg_class_ind = self.num_classes
+        # note in spare rcnn num_gt == num_pos
+        pos_inds = (labels >= 0) & (labels < bg_class_ind)
+        num_pos = pos_inds.sum().float()
+        avg_factor = reduce_mean(num_pos)
+        if cls_score is not None:
+            if cls_score.numel() > 0:
+                losses['loss_cls'] = self.loss_cls(
+                    cls_score,
+                    labels,
+                    label_weights,
+                    avg_factor=avg_factor,
+                    reduction_override=reduction_override)
+                losses['pos_acc'] = accuracy(cls_score[pos_inds],
+                                             labels[pos_inds])
+        if bbox_pred is not None:
+            # 0~self.num_classes-1 are FG, self.num_classes is BG
+            # do not perform bounding box regression for BG anymore.
+            if pos_inds.any():
+                pos_bbox_pred = bbox_pred.reshape(bbox_pred.size(0),
+                                                  4)[pos_inds.type(torch.bool)]
+                imgs_whwh = imgs_whwh.reshape(bbox_pred.size(0),
+                                              4)[pos_inds.type(torch.bool)]
                 losses['loss_bbox'] = self.loss_bbox(
                     pos_bbox_pred / imgs_whwh,
                     bbox_targets[pos_inds.type(torch.bool)] / imgs_whwh,
@@ -420,8 +533,8 @@ class DIIHead(BBoxHead):
             pos_gt_labels_list,
             cfg=rcnn_train_cfg)
         if concat:
-            labels = torch.cat(labels, 0) # 把[b*t,num_proposal]展开成b*t*num_proposal
-            label_weights = torch.cat(label_weights, 0) # 同理展开
+            labels = torch.cat(labels, 0)
+            label_weights = torch.cat(label_weights, 0)
             bbox_targets = torch.cat(bbox_targets, 0)
             bbox_weights = torch.cat(bbox_weights, 0)
         return labels, label_weights, bbox_targets, bbox_weights

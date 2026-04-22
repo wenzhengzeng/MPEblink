@@ -16,6 +16,7 @@
 <!--     · -->
     <a href="https://scholar.google.com/citations?user=UX5N_FQAAAAJ">Zhiwen Fang</a><sup>2</sup>,
 <!--     · -->
+    <br>
     <a href="https://joeyzhouty.github.io/">Joey Tianyi Zhou</a><sup>3</sup>
     
   </p>
@@ -23,8 +24,7 @@
   <h3 align="center">CVPR 2023</h3>
 
   <h3 align="center"> <a href="https://wenzhengzeng.github.io/mpeblink/">Project Page</a> | <a href="https://arxiv.org/abs/2303.16053">Paper</a> | <a href="https://www.youtube.com/watch?v=ngME7dym0Uk">Video</a> | <a href="https://wenzhengzeng.github.io/mpeblink/static/images/cvpr23_poster.pdf">Poster</a> | <a href="https://zenodo.org/record/7754768">Dataset</a> | <a href="https://github.com/wenzhengzeng/MPEblink#-demo">Demo</a></h3>
-    <h3 align="center"> <a href="https://paperswithcode.com/sota/on-mpeblink?p=real-time-multi-person-eyeblink-detection-in">
-  <img src="https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/real-time-multi-person-eyeblink-detection-in/on-mpeblink" alt="PWC">
+    
 </a> </h3>
   <div align="center"></div>
 </p>
@@ -36,14 +36,22 @@
 </p>
 This repository contains the official implementation of the CVPR 2023 paper "Real-time Multi-person Eyeblink Detection in the Wild for Untrimmed Video".
 
+## 📢 News
+
+- **[2026.4]** We release [MPEblink2.0](#mpeblink2-update) and [InstBlink++](#instblinkpp-update), check out our [extended report](../docs/InstBlinkPP.pdf) for details. Besides, also check out our new work [DeFB](https://github.com/jinfanggan/DeFB), featured with higher eyeblink detection performance and easy-to-use environment (without MMCV dependency).
+- **[2023.6]** We release MPEblink and Instblink.
+- **[2023.2]** Our work is accepted by CVPR 2023. 
 
 
 ## 🔆 Highlights 
 
 - **New Task:** It is the first time that the task of instance-level multi-person eyeblink detection in untrimmed videos is formally defined and explored. We think that a good multi-person eyeblink detection algorithm should be able to (1) detect and track human instances’ faces reliably to ensure the instance-level analysis ability along the whole video, and (2) detect eyeblink boundaries accurately within each human instance to ensure the precise awareness of their eyeblink behaviors. We design new metrics to give attention to both instance awareness quality and eyeblink detection quality;
-- **New Dataset:** To support this research task, we introduce [MPEblink](https://doi.org/10.5281/zenodo.7754768). It is featured with multi-instance, unconstrained, and untrimmed, which makes it more challenging and offers a closer correspondence to real-world demands;
+- **New Dataset:** To support this research task, we introduce  [MPEblink 1.0](https://doi.org/10.5281/zenodo.7754768) & [MPEblink2.0](https://huggingface.co/datasets/Tao-HUST/MPEblink2.0). It is featured with multi-instance, unconstrained, and untrimmed, which makes it more challenging and offers a closer correspondence to real-world demands; 
 - **New Framework:** We propose a one-stage multi-person eyeblink detection method InstBlink. It can jointly perform face detection, tracking, and instance-level eyeblink detection. Such a task-joint paradigm can benefit the sub-tasks uniformly. Benefited from the one-stage design, InstBlink also shows high efficiency especially in multi-instance scenarios.
 - **Open Source:** We release the dataset, model, and code for training, testing, and demo, aiming to foster progress in relevant research fields.
+- <a id="mpeblink2-update"></a>🔥 **Dataset Latest Update:** We upgrade MPEblink 1.0 to MPEblink 2.0 by providing higher-quality annotations, expanding scenario diversity with a particular emphasis on dense and long-video settings, and introducing an enhanced evaluation metric, IB, as a unified metric that mitigates the bias of the two standalone metrics used in the conference version. 
+- <a id="instblinkpp-update"></a>🔥 **Model Latest Update:** We propose InstBlink++ with disentangled fine-grained eye modeling and global–local feature interaction, achieving substantial
+performance gains while preserving the real-time advantages, which significant performance improvements on both instance localization and eyeblink detection.
 
 <!-- <div align="center">
 <img src="pictures/fig1.png" width="75%"/>
@@ -77,7 +85,7 @@ This repository contains the official implementation of the CVPR 2023 paper "Rea
 
 ### Data Preparation
 
-1. Download the [MPEblink dataset](https://doi.org/10.5281/zenodo.7754768). Remember to change the dataset root path into yours in `configs/base/mpeblink.py`.
+1. Download the  [MPEblink 1.0](https://doi.org/10.5281/zenodo.7754768) & [MPEblink2.0](https://huggingface.co/datasets/Tao-HUST/MPEblink2.0). Remember to change the dataset root path into yours in `configs/base/mpeblink.py`.
 
 2. Convert the videos to raw frames.
     ```bash
@@ -93,7 +101,9 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
   ```
 
 
-### Inference & Evaluation
+## 🚀 Instblink Training & Inference 
+
+#### Inference & Evaluation
 
 * You can download the pre-trained model at [Google Drive](https://drive.google.com/file/d/1kRx_pPpOwAk9D6O3M5Ed7vyAqkZbCh83/view?usp=sharing) or [Baidu Drive (code avk9)](https://pan.baidu.com/s/1UxZ7PDc76wc5y3n5QUqFqg) and put it in the `pretrained_models` directory.
 
@@ -104,7 +114,7 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
   ```
 
 
-### Training
+#### Training
 
 * Download the pretrained [tevit_r50](https://github.com/hustvl/Storage/releases/download/v1.1.0/tevit_r50.pth) model and place it in the `pretrained_models` directory.
 
@@ -112,6 +122,28 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
 
   ```bash
   bash tools/train.sh
+  ```
+
+## 🚀 Instblink++ Training & Inference 
+
+#### Inference & Evaluation
+
+* You can download the pre-trained model at [quark Drive](https://pan.quark.cn/s/0caf047816e2) and put it in the `pretrained_models` directory.
+
+* Run `test_eval_instblink_plus.sh` for inference and evaluation. Remember to change the dataset path into yours.
+
+  ```bash
+  bash tools/test_eval_instblink_plus.sh
+  ```
+
+#### Training
+
+* Download the pretrained [tevit_r50](https://github.com/hustvl/Storage/releases/download/v1.1.0/tevit_r50.pth) model and place it in the `pretrained_models` directory.
+
+* Run `train_instblink_plus.sh` to begin training.
+
+  ```bash
+  bash tools/train_instblink_plus.sh
   ```
 
 ## ❤️ Acknowledgement
@@ -131,4 +163,6 @@ If you find our work useful in your research, please consider to cite our paper:
     year={2023}
   }
   ```
+
+
 

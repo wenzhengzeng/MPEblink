@@ -10,10 +10,10 @@ from .test_mixins import BBoxTestMixin, MaskTestMixin
 @HEADS.register_module()
 class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
     """Simplest base roi head including one bbox head and one mask head."""
-
+    """Simplest base roi head including one bbox head and one mask head."""
     def init_assigner_sampler(self):
         """Initialize assigner and sampler."""
-        self.bbox_assigner = None
+        """Initialize assigner and sampler."""
         self.bbox_sampler = None
         if self.train_cfg:
             self.bbox_assigner = build_assigner(self.train_cfg.assigner)
@@ -22,12 +22,12 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def init_bbox_head(self, bbox_roi_extractor, bbox_head):
         """Initialize ``bbox_head``"""
-        self.bbox_roi_extractor = build_roi_extractor(bbox_roi_extractor)
+        """Initialize ``bbox_head``"""
         self.bbox_head = build_head(bbox_head)
 
     def init_mask_head(self, mask_roi_extractor, mask_head):
         """Initialize ``mask_head``"""
-        if mask_roi_extractor is not None:
+        """Initialize ``mask_head``"""
             self.mask_roi_extractor = build_roi_extractor(mask_roi_extractor)
             self.share_roi_extractor = False
         else:
@@ -37,7 +37,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def forward_dummy(self, x, proposals):
         """Dummy forward function."""
-        # bbox head
+        """Dummy forward function."""
         outs = ()
         rois = bbox2roi([proposals])
         if self.with_bbox:
@@ -117,7 +117,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def _bbox_forward(self, x, rois):
         """Box head forward function used in both training and testing."""
-        # TODO: a more flexible way to decide which feature maps to use
+        """Box head forward function used in both training and testing."""
         bbox_feats = self.bbox_roi_extractor(
             x[:self.bbox_roi_extractor.num_inputs], rois)
         if self.with_shared_head:
@@ -131,7 +131,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
     def _bbox_forward_train(self, x, sampling_results, gt_bboxes, gt_labels,
                             img_metas):
         """Run forward function and calculate loss for box head in training."""
-        rois = bbox2roi([res.bboxes for res in sampling_results])
+        """Run forward function and calculate loss for box head in training."""
         bbox_results = self._bbox_forward(x, rois)
 
         bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes,
@@ -180,7 +180,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def _mask_forward(self, x, rois=None, pos_inds=None, bbox_feats=None):
         """Mask head forward function used in both training and testing."""
-        assert ((rois is not None) ^
+        """Mask head forward function used in both training and testing."""
                 (pos_inds is not None and bbox_feats is not None))
         if rois is not None:
             mask_feats = self.mask_roi_extractor(
@@ -202,7 +202,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
                                 proposals=None,
                                 rescale=False):
         """Async test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        """Async test without augmentation."""
 
         det_bboxes, det_labels = await self.async_test_bboxes(
             x, img_metas, proposal_list, self.test_cfg, rescale=rescale)
@@ -294,7 +294,7 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def onnx_export(self, x, proposals, img_metas, rescale=False):
         """Test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        """Test without augmentation."""
         det_bboxes, det_labels = self.bbox_onnx_export(
             x, img_metas, proposals, self.test_cfg, rescale=rescale)
 

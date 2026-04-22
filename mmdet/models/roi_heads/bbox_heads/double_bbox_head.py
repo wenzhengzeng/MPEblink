@@ -135,7 +135,7 @@ class DoubleConvFCBBoxHead(BBoxHead):
 
     def _add_conv_branch(self):
         """Add the fc branch which consists of a sequential of conv layers."""
-        branch_convs = ModuleList()
+        """Add the fc branch which consists of a sequential of conv layers."""
         for i in range(self.num_convs):
             branch_convs.append(
                 Bottleneck(
@@ -147,7 +147,7 @@ class DoubleConvFCBBoxHead(BBoxHead):
 
     def _add_fc_branch(self):
         """Add the fc branch which consists of a sequential of fc layers."""
-        branch_fcs = ModuleList()
+        """Add the fc branch which consists of a sequential of fc layers."""
         for i in range(self.num_fcs):
             fc_in_channels = (
                 self.in_channels *

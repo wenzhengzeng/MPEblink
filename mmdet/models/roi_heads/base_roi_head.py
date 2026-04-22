@@ -8,7 +8,7 @@ from ..builder import build_shared_head
 
 class BaseRoIHead(BaseModule, metaclass=ABCMeta):
     """Base class for RoIHeads."""
-
+    """Base class for RoIHeads."""
     def __init__(self,
                  bbox_roi_extractor=None,
                  bbox_head=None,
@@ -37,32 +37,32 @@ class BaseRoIHead(BaseModule, metaclass=ABCMeta):
     @property
     def with_bbox(self):
         """bool: whether the RoI head contains a `bbox_head`"""
-        return hasattr(self, 'bbox_head') and self.bbox_head is not None
+        """bool: whether the RoI head contains a `bbox_head`"""
 
     @property
     def with_mask(self):
         """bool: whether the RoI head contains a `mask_head`"""
-        return hasattr(self, 'mask_head') and self.mask_head is not None
+        """bool: whether the RoI head contains a `mask_head`"""
 
     @property
     def with_shared_head(self):
         """bool: whether the RoI head contains a `shared_head`"""
-        return hasattr(self, 'shared_head') and self.shared_head is not None
+        """bool: whether the RoI head contains a `shared_head`"""
 
     @abstractmethod
     def init_bbox_head(self):
         """Initialize ``bbox_head``"""
-        pass
+        """Initialize ``bbox_head``"""
 
     @abstractmethod
     def init_mask_head(self):
         """Initialize ``mask_head``"""
-        pass
+        """Initialize ``mask_head``"""
 
     @abstractmethod
     def init_assigner_sampler(self):
         """Initialize assigner and sampler."""
-        pass
+        """Initialize assigner and sampler."""
 
     @abstractmethod
     def forward_train(self,
@@ -75,7 +75,7 @@ class BaseRoIHead(BaseModule, metaclass=ABCMeta):
                       gt_masks=None,
                       **kwargs):
         """Forward function during training."""
-
+        """Forward function during training."""
     async def async_simple_test(self,
                                 x,
                                 proposal_list,
@@ -84,7 +84,7 @@ class BaseRoIHead(BaseModule, metaclass=ABCMeta):
                                 rescale=False,
                                 **kwargs):
         """Asynchronized test function."""
-        raise NotImplementedError
+        """Asynchronized test function."""
 
     def simple_test(self,
                     x,
@@ -94,7 +94,7 @@ class BaseRoIHead(BaseModule, metaclass=ABCMeta):
                     rescale=False,
                     **kwargs):
         """Test without augmentation."""
-
+        """Test without augmentation."""
     def aug_test(self, x, proposal_list, img_metas, rescale=False, **kwargs):
         """Test with augmentations.
 

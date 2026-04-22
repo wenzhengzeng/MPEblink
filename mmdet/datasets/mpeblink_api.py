@@ -27,6 +27,7 @@ from matplotlib.patches import Polygon
 import numpy as np
 import copy
 import itertools
+import os
 from collections import defaultdict
 import sys
 PYTHON_VERSION = sys.version_info[0]
@@ -68,11 +69,9 @@ class MPEblink:
         if 'videos' in self.dataset:
             for vid in self.dataset['videos']:
                 vids[vid['id']] = vid
-        # The number of elements in vids is the same as the number of videos, which records the basic information of the video (resolution, number of frames, frame path, etc.)
         if 'categories' in self.dataset:
             for cat in self.dataset['categories']:
                 cats[cat['id']] = cat
-        # record category information
         if 'annotations' in self.dataset and 'categories' in self.dataset:
             for ann in self.dataset['annotations']:
                 catToVids[ann['category_id']].append(ann['video_id'])
@@ -210,7 +209,7 @@ class MPEblink:
         print('Loading and preparing results...')
         tic = time.time()
         if type(resFile) == str or (PYTHON_VERSION == 2 and type(resFile) == unicode):
-            anns = json.load(open(resFile)) # load prediction results
+            anns = json.load(open(resFile))
         elif type(resFile) == np.ndarray:
             anns = self.loadNumpyAnnotations(resFile)
         else:
@@ -221,14 +220,17 @@ class MPEblink:
             anns = anns['annotations']
         assert type(anns) == list, 'results in not an array of objects'
         annsVidIds = [ann['video_id'] for ann in anns]
+        
         assert set(annsVidIds) == (set(annsVidIds) & set(self.getVidIds())), \
                'Results do not correspond to current coco set'
         
         res.dataset['categories'] = copy.deepcopy(self.dataset['categories'])
-        for id, ann in enumerate(anns): # ann corresponds to one instance cross the video
+        for id, ann in enumerate(anns):
             ann['areas'] = []
-            for bbox in ann['bboxes']:    # Iterate over the bbox of each frame of the current video
-                if bbox == None:    
+            for bbox in ann['bboxes']:
+                # now only support compressed RLE format as segmentation results
+                # ann['areas'].append(bbox[2]*bbox[3]) if bbox != None else ann['areas'].append(None)
+                if bbox == None:
                     ann['areas'].append(0)
                 else:
                     ann['areas'].append(bbox[2] * bbox[3])

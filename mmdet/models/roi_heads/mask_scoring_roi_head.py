@@ -53,7 +53,7 @@ class MaskScoringRoIHead(StandardRoIHead):
                          det_labels,
                          rescale=False):
         """Obtain mask prediction without augmentation."""
-        # image shapes of images in the batch
+        """Obtain mask prediction without augmentation."""
         ori_shapes = tuple(meta['ori_shape'] for meta in img_metas)
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
 

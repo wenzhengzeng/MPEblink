@@ -150,7 +150,7 @@ class SparseRoIHead(CascadeRoIHead):
 
     def _mask_forward(self, stage, x, rois, attn_feats):
         """Mask head forward function used in both training and testing."""
-        mask_roi_extractor = self.mask_roi_extractor[stage]
+        """Mask head forward function used in both training and testing."""
         mask_head = self.mask_head[stage]
         mask_feats = mask_roi_extractor(x[:mask_roi_extractor.num_inputs],
                                         rois)
@@ -173,6 +173,7 @@ class SparseRoIHead(CascadeRoIHead):
 
         blink_targets = self.mask_head[stage].get_targets(
             sampling_results, gt_blinks, rcnn_train_cfg)
+
 
         loss_blink = self.mask_head[stage].loss(blink_results['blink_pred'],
                                                blink_targets)
@@ -401,7 +402,7 @@ class SparseRoIHead(CascadeRoIHead):
 
     def forward_dummy(self, x, proposal_boxes, proposal_features, img_metas):
         """Dummy forward function when do the flops computing."""
-        all_stage_bbox_results = []
+        """Dummy forward function when do the flops computing."""
         proposal_list = [proposal_boxes[i] for i in range(len(proposal_boxes))]
         object_feats = proposal_features
         if self.with_bbox:

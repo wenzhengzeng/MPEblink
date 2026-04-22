@@ -119,7 +119,6 @@ mmdet/.mim
 work_dirs/
 src/
 docker/
-docs/
 
 # Pytorch
 *.pth
