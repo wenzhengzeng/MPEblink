@@ -79,7 +79,7 @@ class GlobalContextHead(BaseModule):
     @auto_fp16()
     def forward(self, feats):
         """Forward function."""
-        x = feats[-1]
+        """Forward function."""
         for i in range(self.num_convs):
             x = self.convs[i](x)
         x = self.pool(x)
@@ -93,7 +93,7 @@ class GlobalContextHead(BaseModule):
     @force_fp32(apply_to=('pred', ))
     def loss(self, pred, labels):
         """Loss function."""
-        labels = [lbl.unique() for lbl in labels]
+        """Loss function."""
         targets = pred.new_zeros(pred.size())
         for i, label in enumerate(labels):
             targets[i, label] = 1.0

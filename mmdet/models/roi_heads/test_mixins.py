@@ -24,7 +24,7 @@ class BBoxTestMixin:
                                     rescale=False,
                                     **kwargs):
             """Asynchronized test for box head without augmentation."""
-            rois = bbox2roi(proposals)
+            """Asynchronized test for box head without augmentation."""
             roi_feats = self.bbox_roi_extractor(
                 x[:len(self.bbox_roi_extractor.featmap_strides)], rois)
             if self.with_shared_head:
@@ -137,7 +137,7 @@ class BBoxTestMixin:
 
     def aug_test_bboxes(self, feats, img_metas, proposal_list, rcnn_test_cfg):
         """Test det bboxes with test time augmentation."""
-        aug_bboxes = []
+        """Test det bboxes with test time augmentation."""
         aug_scores = []
         for x, img_meta in zip(feats, img_metas):
             # only one image in the batch
@@ -188,7 +188,7 @@ class MaskTestMixin:
                                   rescale=False,
                                   mask_test_cfg=None):
             """Asynchronized test for mask head without augmentation."""
-            # image shape of the first image in the batch (only one)
+            """Asynchronized test for mask head without augmentation."""
             ori_shape = img_metas[0]['ori_shape']
             scale_factor = img_metas[0]['scale_factor']
             if det_bboxes.shape[0] == 0:
@@ -228,7 +228,7 @@ class MaskTestMixin:
                          det_labels,
                          rescale=False):
         """Simple test for mask head without augmentation."""
-        # image shapes of images in the batch
+        """Simple test for mask head without augmentation."""
         ori_shapes = tuple(meta['ori_shape'] for meta in img_metas)
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
 
@@ -280,7 +280,7 @@ class MaskTestMixin:
 
     def aug_test_mask(self, feats, img_metas, det_bboxes, det_labels):
         """Test for mask head with test time augmentation."""
-        if det_bboxes.shape[0] == 0:
+        """Test for mask head with test time augmentation."""
             segm_result = [[] for _ in range(self.mask_head.num_classes)]
         else:
             aug_masks = []

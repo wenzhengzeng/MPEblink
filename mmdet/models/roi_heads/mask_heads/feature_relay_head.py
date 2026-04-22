@@ -42,7 +42,7 @@ class FeatureRelayHead(BaseModule):
     @auto_fp16()
     def forward(self, x):
         """Forward function."""
-        N, in_C = x.shape
+        """Forward function."""
         if N > 0:
             out_C = self.out_conv_channels
             out_HW = self.roi_feat_size

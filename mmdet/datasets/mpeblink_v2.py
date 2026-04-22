@@ -12,7 +12,7 @@ from .pipelines import Compose
 
 
 @DATASETS.register_module()
-class MPEblinkDataset(CustomDataset):
+class MPEblinkV2Dataset(CustomDataset):
 
     CLASSES = ('person_face')
 
@@ -24,6 +24,7 @@ class MPEblinkDataset(CustomDataset):
                  data_root=None,
                  img_prefix='',
                  seg_prefix=None,
+                 with_eye_bbox=False,
                  proposal_file=None,
                  test_mode=False,
                  filter_empty_gt=True):
@@ -32,6 +33,7 @@ class MPEblinkDataset(CustomDataset):
         self.data_root = data_root
         self.img_prefix = img_prefix
         self.seg_prefix = seg_prefix
+        self.with_eye_bbox = with_eye_bbox
         self.proposal_file = proposal_file
         self.test_mode = test_mode
         self.filter_empty_gt = filter_empty_gt
@@ -156,6 +158,28 @@ class MPEblinkDataset(CustomDataset):
         ann_ids = self.mpeblink.getAnnIds(vidIds=[vid_id])
         ann_info = self.mpeblink.loadAnns(ann_ids)
         return [ann['category_id'] for ann in ann_info]
+    
+    def Manhattan(self, p1, p2):
+        x1 = p1[0]
+        x2 = p2[0]
+        y1 = p1[1]
+        y2 = p2[1]
+        result = abs(x1 - x2) + abs(y1 - y2)
+        return result
+
+    
+    def get_eye_region(self, pos_left, pos_right):
+        h = self.Manhattan(pos_left, pos_right)
+        return h
+    
+    def get_min_max_position(self, coordinates, indices):
+        x_values = [coordinates[i][0] for i in indices]
+        y_values = [coordinates[i][1] for i in indices]
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+        return min_x, max_x, min_y, max_y
 
     def _parse_ann_info(self, ann_info, frame_id):
         """Parse bbox and mask annotation.
@@ -174,6 +198,7 @@ class MPEblinkDataset(CustomDataset):
         gt_ids = []
         gt_bboxes_ignore = []
         gt_blinks = []
+        gt_eye_bboxes = []
 
         for i, ann in enumerate(ann_info):
             bbox = ann['bboxes'][frame_id]
@@ -185,6 +210,40 @@ class MPEblinkDataset(CustomDataset):
             #     continue
             bbox = [x1, y1, x1 + w, y1 + h]
 
+            
+
+
+            # if self.with_eye_bbox:
+            #     pos_left = np.empty(shape=[0, 3], dtype=float)
+            #     pos_right = np.empty(shape=[0, 3], dtype=float)
+            #     for i in range(0, 6):
+            #         pos_left = np.append(pos_left, [ann['landmark'][frame_id][42 + i]], axis=0)
+            #         pos_right = np.append(pos_right, [ann['landmark'][frame_id][36 + i]], axis=0)
+
+            #     pos_left = np.mean(pos_left, axis=0)
+            #     pos_right = np.mean(pos_right, axis=0)
+            #     pos_center = (pos_left + pos_right) / 2
+
+
+            # # right_y_start = max(0, int(round(pos_right[1] - 0.5 * h)))
+            # # right_x_start = max(0, int(round(pos_right[0] - 0.5 * h)))
+            # x_start = max(0, int(round(pos_center[0] - 0.75 * h)))
+            # y_start = max(0, int(round(pos_center[1] - 0.25 * h)))
+
+
+
+            if self.with_eye_bbox:
+
+                selected_landmark_index = [17, 21, 22, 26, 36, 40, 41, 45, 46, 47, 29]
+
+                min_x, max_x, min_y, max_y = self.get_min_max_position(ann['landmark'][frame_id], selected_landmark_index)
+
+
+                eye_bbox = [min_x, min_y, max_x+1, max_y+1]
+
+
+
+
             if ann.get('iscrowd', False):
                 gt_bboxes_ignore.append(bbox)
             else:
@@ -193,10 +252,12 @@ class MPEblinkDataset(CustomDataset):
                               1)
                 gt_labels.append(self.cat2label[ann['category_id']])
                 gt_blinks.append(ann['blinks_binary'][frame_id])
+                gt_eye_bboxes.append(eye_bbox)
         if gt_bboxes:
             gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
             gt_labels = np.array(gt_labels, dtype=np.int64)
             gt_blinks = np.array(gt_blinks, dtype=np.int64)
+            gt_eye_bboxes = np.array(gt_eye_bboxes, dtype=np.float32)
         else:
             gt_bboxes = np.zeros((0, 4), dtype=np.float32)
             gt_labels = np.array([], dtype=np.int64)
@@ -207,12 +268,22 @@ class MPEblinkDataset(CustomDataset):
         else:
             gt_bboxes_ignore = np.zeros((0, 4), dtype=np.float32)
 
-        ann = dict(
-            bboxes=gt_bboxes,
-            labels=gt_labels,
-            blinks=gt_blinks,
-            bboxes_ignore=gt_bboxes_ignore,
-            ids=gt_ids)
+
+        if self.with_eye_bbox:
+            ann = dict(
+                bboxes=gt_bboxes,
+                labels=gt_labels,
+                blinks=gt_blinks,
+                eye_bboxes = gt_eye_bboxes,
+                bboxes_ignore=gt_bboxes_ignore,
+                ids=gt_ids)
+        else:
+            ann = dict(
+                bboxes=gt_bboxes,
+                labels=gt_labels,
+                blinks=gt_blinks,
+                bboxes_ignore=gt_bboxes_ignore,
+                ids=gt_ids)
 
         return ann
 

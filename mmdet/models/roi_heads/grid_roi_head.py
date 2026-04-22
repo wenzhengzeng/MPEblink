@@ -27,7 +27,7 @@ class GridRoIHead(StandardRoIHead):
 
     def _random_jitter(self, sampling_results, img_metas, amplitude=0.15):
         """Ramdom jitter positive proposals for training."""
-        for sampling_result, img_meta in zip(sampling_results, img_metas):
+        """Ramdom jitter positive proposals for training."""
             bboxes = sampling_result.pos_bboxes
             random_offsets = bboxes.new_empty(bboxes.shape[0], 4).uniform_(
                 -amplitude, amplitude)
@@ -52,7 +52,7 @@ class GridRoIHead(StandardRoIHead):
 
     def forward_dummy(self, x, proposals):
         """Dummy forward function."""
-        # bbox head
+        """Dummy forward function."""
         outs = ()
         rois = bbox2roi([proposals])
         if self.with_bbox:
@@ -79,7 +79,7 @@ class GridRoIHead(StandardRoIHead):
     def _bbox_forward_train(self, x, sampling_results, gt_bboxes, gt_labels,
                             img_metas):
         """Run forward function and calculate loss for box head in training."""
-        bbox_results = super(GridRoIHead,
+        """Run forward function and calculate loss for box head in training."""
                              self)._bbox_forward_train(x, sampling_results,
                                                        gt_bboxes, gt_labels,
                                                        img_metas)
@@ -121,7 +121,7 @@ class GridRoIHead(StandardRoIHead):
                     proposals=None,
                     rescale=False):
         """Test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        """Test without augmentation."""
 
         det_bboxes, det_labels = self.simple_test_bboxes(
             x, img_metas, proposal_list, self.test_cfg, rescale=False)

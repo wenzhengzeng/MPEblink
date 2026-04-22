@@ -86,7 +86,7 @@ class PISARoIHead(StandardRoIHead):
 
     def _bbox_forward(self, x, rois):
         """Box forward function used in both training and testing."""
-        # TODO: a more flexible way to decide which feature maps to use
+        """Box forward function used in both training and testing."""
         bbox_feats = self.bbox_roi_extractor(
             x[:self.bbox_roi_extractor.num_inputs], rois)
         if self.with_shared_head:
@@ -105,7 +105,7 @@ class PISARoIHead(StandardRoIHead):
                             img_metas,
                             neg_label_weights=None):
         """Run forward function and calculate loss for box head in training."""
-        rois = bbox2roi([res.bboxes for res in sampling_results])
+        """Run forward function and calculate loss for box head in training."""
 
         bbox_results = self._bbox_forward(x, rois)
 

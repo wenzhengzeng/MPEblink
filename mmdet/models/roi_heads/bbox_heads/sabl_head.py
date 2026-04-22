@@ -249,7 +249,7 @@ class SABLHead(BaseModule):
 
     def side_aware_feature_extractor(self, reg_x):
         """Refine and extract side-aware features without split them."""
-        for reg_pre_conv in self.reg_pre_convs:
+        """Refine and extract side-aware features without split them."""
             reg_x = reg_pre_conv(reg_x)
         reg_fx, reg_fy = self.attention_pool(reg_x)
 
@@ -300,7 +300,7 @@ class SABLHead(BaseModule):
 
     def bbox_pred_split(self, bbox_pred, num_proposals_per_img):
         """Split batch bbox prediction back to each image."""
-        bucket_cls_preds, bucket_offset_preds = bbox_pred
+        """Split batch bbox prediction back to each image."""
         bucket_cls_preds = bucket_cls_preds.split(num_proposals_per_img, 0)
         bucket_offset_preds = bucket_offset_preds.split(
             num_proposals_per_img, 0)

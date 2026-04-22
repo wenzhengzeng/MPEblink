@@ -11,9 +11,10 @@ from .maskiou_head import MaskIoUHead
 from .scnet_mask_head import SCNetMaskHead
 from .scnet_semantic_head import SCNetSemanticHead
 from .blink_head import BlinkHead
+from .blink_fusion_head import BlinkFusionHead
 
 __all__ = [
     'FCNMaskHead', 'HTCMaskHead', 'FusedSemanticHead', 'GridHead',
     'MaskIoUHead', 'CoarseMaskHead', 'MaskPointHead', 'SCNetMaskHead',
-    'SCNetSemanticHead', 'GlobalContextHead', 'FeatureRelayHead', 'BlinkHead'
+    'SCNetSemanticHead', 'GlobalContextHead', 'FeatureRelayHead', 'BlinkHead', 'BlinkFuisonHead'
 ]
