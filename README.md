@@ -38,7 +38,7 @@ This repository contains the official implementation of the CVPR 2023 paper "Rea
 
 ## 📢 News
 
-- **[2026.4]** We release [MPEblink2.0](#mpeblink2-update) and [InstBlink++](#instblinkpp-update), check out our [extended report](../docs/InstBlinkPP.pdf) for details. Besides, also check out our new work [DeFB](https://github.com/jinfanggan/DeFB), featured with higher eyeblink detection performance and easy-to-use environment (without MMCV dependency).
+- **[2026.4]** We release [MPEblink2.0](#mpeblink2-update) and [InstBlink++](#instblinkpp-update), check out our [extended report](https://github.com/wenzhengzeng/MPEblink/blob/main/docs/InstBlinkPP.pdf) for details. Besides, also check out our new work [DeFB](https://github.com/jinfanggan/DeFB), featured with higher eyeblink detection performance and easy-to-use environment (without MMCV dependency).
 - **[2023.6]** We release MPEblink and Instblink.
 - **[2023.2]** Our work is accepted by CVPR 2023. 
 
