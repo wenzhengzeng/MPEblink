@@ -5,7 +5,7 @@ from mmcv.runner import ModuleList
 from .sparse_roi_head import SparseRoIHead
 from ..builder import HEADS, build_head, build_roi_extractor
 from mmdet.core import bbox2result, bbox2roi, bbox_xyxy_to_cxcywh
-import torchvision.ops as ops
+
 @HEADS.register_module()
 class InstBlinkRoIHead(SparseRoIHead):
 
@@ -40,7 +40,7 @@ class InstBlinkRoIHead(SparseRoIHead):
     @property
     def with_blink(self):
         """bool: whether the RoI head contains a `blink_head`"""
-        """bool: whether the RoI head contains a `blink_head`"""
+        return hasattr(self, 'blink_head') and self.blink_head is not None
     
     def init_blink_head(self, mask_roi_extractor, blink_head):
         """Initialize blink head.
@@ -112,11 +112,9 @@ class InstBlinkRoIHead(SparseRoIHead):
         bbox_roi_extractor = self.bbox_roi_extractor[stage]
         bbox_head = self.bbox_head[stage]
         bbox_feats = bbox_roi_extractor(x[:bbox_roi_extractor.num_inputs],
-                                        rois)
-        # cls_score, bbox_pred, object_feats, attn_feats = bbox_head(
-        #     bbox_feats, object_feats, clip_length)
+                                        rois) # [b*t*num_proposal, 256, w_feat, h_feat] roi-align
         cls_score, bbox_pred, object_feats, attn_feats = bbox_head(
-            bbox_feats, object_feats, clip_length, stage = stage)
+            bbox_feats, object_feats, clip_length)
         proposal_list = self.bbox_head[stage].refine_bboxes(
             rois,
             rois.new_zeros(len(rois)),  # dummy arg
@@ -140,7 +138,7 @@ class InstBlinkRoIHead(SparseRoIHead):
     
     def _blink_forward(self, stage, attn_feats):
         """Mask head forward function used in both training and testing."""
-        """Mask head forward function used in both training and testing."""
+        blink_head = self.blink_head[stage]
         # do not support caffe_c4 model anymore
         blink_pred = blink_head(attn_feats)
 
@@ -159,7 +157,6 @@ class InstBlinkRoIHead(SparseRoIHead):
 
         blink_targets = self.blink_head[stage].get_targets(
             sampling_results, gt_blinks, rcnn_train_cfg)
-
 
         loss_blink = self.blink_head[stage].loss(blink_results['blink_pred'],
                                                blink_targets)
@@ -236,21 +233,21 @@ class InstBlinkRoIHead(SparseRoIHead):
                         bbox_xyxy_to_cxcywh(proposal_list[i * T + j] /
                                             imgs_whwh[i * T]))
                 assign_result = self.bbox_assigner[stage].assign(
-                    normolize_bbox_ccwh,
-                    cls_pred_list[i * T:i * T + T],
+                    normolize_bbox_ccwh,            
+                    cls_pred_list[i * T:i * T + T],     
                     gt_bboxes[i * T:i * T + T],
                     gt_labels[i * T:i * T + T],
                     img_metas[i * T],
                     gt_ids=gt_ids[i * T:i * T + T])
                 sampling_result = []
-                for j in range(T):
+                for j in range(T):  # for each frame
                     sampling_result.append(self.bbox_sampler[stage].sample(
                         assign_result[j], proposal_list[i * T + j],gt_bboxes[i * T + j]
-                        ))
-                sampling_results.extend(sampling_result)
+                        ))  
+                sampling_results.extend(sampling_result)    
             bbox_targets = self.bbox_head[stage].get_targets(
                 sampling_results, gt_bboxes, gt_labels, self.train_cfg[stage],
-                True)
+                True) # bbox_targets: (labels,label_weights,bbox_targets,bbox_weights)，for subsequent loss calculation. labels: [b*t*num_proposals], bbox: [b*t*num_proposals,4]
             cls_score = bbox_results['cls_score']   # [b*t,num_proposal,num_class]
             decode_bbox_pred = bbox_results['decode_bbox_pred'] # [b*t*num_proposal, 4]
 
@@ -340,22 +337,21 @@ class InstBlinkRoIHead(SparseRoIHead):
             cls_score = cls_score.sigmoid()
         else:
             cls_score = cls_score.softmax(-1)[..., :-1]
-        cls_score_mean = cls_score.mean(dim=0)
-        # scores_per_img, topk_indices = cls_score_mean.flatten(0, 1).topk(
+        # During inference, only the results of the last iteration are used
+        cls_score_mean = cls_score.mean(dim=0) # The classification results of each frame are averaged and used as the classification score of the whole query
         scores_per_img, topk_indices = cls_score_mean.flatten(0, 1).topk(
-            self.test_cfg.max_per_img, sorted=False)
-        for img_id in range(num_imgs):
-
-            labels_per_img = topk_indices % num_classes
+            self.test_cfg.max_per_img, sorted=False) # [num_qeury,num_class] --> [num_query*num_class]
+        for img_id in range(num_imgs):    # for each frame                     
+            labels_per_img = topk_indices % num_classes # get category
             bbox_pred_per_img = proposal_list[img_id][topk_indices //
                                                       num_classes]
             attn_feats_per_img = bbox_results['object_feats'][img_id][
-                topk_indices // num_classes]
+                topk_indices // num_classes] 
             if rescale:
                 scale_factor = img_metas[img_id]['scale_factor']
-                bbox_pred_per_img /= bbox_pred_per_img.new_tensor(scale_factor)
+                bbox_pred_per_img /= bbox_pred_per_img.new_tensor(scale_factor) # bbox divides directly by scale_factor, [x1,y1,x2,y2]
             det_bboxes.append(
-                torch.cat([bbox_pred_per_img, scores_per_img[:, None]], dim=1))
+                torch.cat([bbox_pred_per_img, scores_per_img[:, None]], dim=1)) # concat bbox and score
             det_labels.append(labels_per_img)
             attn_feats.append(attn_feats_per_img)
 
@@ -377,7 +373,7 @@ class InstBlinkRoIHead(SparseRoIHead):
             final_blink_results = []
             blink_pred = blink_results['blink_pred']
             blink_pred = blink_pred.sigmoid()
-            for img_id in range(num_imgs):
+            for img_id in range(num_imgs):  # for each frame
               
                 blink_pred_per_img = blink_pred[img_id]
                 

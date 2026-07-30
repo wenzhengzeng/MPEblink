@@ -99,7 +99,7 @@ class CascadeRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def init_assigner_sampler(self):
         """Initialize assigner and sampler for each stage."""
-        """Initialize assigner and sampler for each stage."""
+        self.bbox_assigner = []
         self.bbox_sampler = []
         if self.train_cfg is not None:
             for idx, rcnn_train_cfg in enumerate(self.train_cfg):
@@ -111,7 +111,7 @@ class CascadeRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def forward_dummy(self, x, proposals):
         """Dummy forward function."""
-        """Dummy forward function."""
+        # bbox head
         outs = ()
         rois = bbox2roi([proposals])
         if self.with_bbox:
@@ -129,7 +129,7 @@ class CascadeRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def _bbox_forward(self, stage, x, rois):
         """Box head forward function used in both training and testing."""
-        """Box head forward function used in both training and testing."""
+        bbox_roi_extractor = self.bbox_roi_extractor[stage]
         bbox_head = self.bbox_head[stage]
         bbox_feats = bbox_roi_extractor(x[:bbox_roi_extractor.num_inputs],
                                         rois)
@@ -143,7 +143,7 @@ class CascadeRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
     def _bbox_forward_train(self, stage, x, sampling_results, gt_bboxes,
                             gt_labels, rcnn_train_cfg):
         """Run forward function and calculate loss for box head in training."""
-        """Run forward function and calculate loss for box head in training."""
+        rois = bbox2roi([res.bboxes for res in sampling_results])
         bbox_results = self._bbox_forward(stage, x, rois)
         bbox_targets = self.bbox_head[stage].get_targets(
             sampling_results, gt_bboxes, gt_labels, rcnn_train_cfg)
@@ -157,7 +157,7 @@ class CascadeRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
     def _mask_forward(self, stage, x, rois):
         """Mask head forward function used in both training and testing."""
-        """Mask head forward function used in both training and testing."""
+        mask_roi_extractor = self.mask_roi_extractor[stage]
         mask_head = self.mask_head[stage]
         mask_feats = mask_roi_extractor(x[:mask_roi_extractor.num_inputs],
                                         rois)

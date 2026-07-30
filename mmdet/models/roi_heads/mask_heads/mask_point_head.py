@@ -149,7 +149,7 @@ class MaskPointHead(BaseModule):
     def _get_target_single(self, rois, rel_roi_points, pos_assigned_gt_inds,
                            gt_masks, cfg):
         """Get training target of MaskPointHead for each image."""
-        """Get training target of MaskPointHead for each image."""
+        num_pos = rois.size(0)
         num_points = cfg.num_points
         if num_pos > 0:
             gt_masks_th = (

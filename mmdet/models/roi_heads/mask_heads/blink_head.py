@@ -69,6 +69,7 @@ class BlinkHead(BaseModule):
                 (batch_size*num_proposals, 1).
         """
 
+        # proposal_feat是atten_feat,也就是query
 
         for blink_layer in self.blink_fcs:
             blink_feat = blink_layer(proposal_feat)     
@@ -81,7 +82,7 @@ class BlinkHead(BaseModule):
         avg_factor = reduce_mean(num_pos)
         loss = dict()
         
-        blink_targets = 1 - blink_targets
+        blink_targets = 1 - blink_targets # Previously, 1 stands for eyeblink and 0 stands for non-eyeblink. Our goal is to have a high output probability when eyeblinks occur, so regards 0 as blink and 1 as non-blink (none-object class) when calculating focal loss.
         loss_blink = self.loss_blink(
             blink_pred,
             blink_targets,

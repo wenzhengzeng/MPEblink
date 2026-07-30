@@ -213,8 +213,13 @@ class LoadAnnotations:
             Default: True.
         with_mask (bool): Whether to parse and load the mask annotation.
              Default: False.
+        with_blink (bool): Whether to load binary blink labels.
+            Default: False.
+        with_eye_bbox (bool): Whether to load eye-region bounding boxes.
+            Default: False.
         with_seg (bool): Whether to parse and load the semantic segmentation
             annotation. Default: False.
+        with_id (bool): Whether to load instance IDs. Default: False.
         poly2mask (bool): Whether to convert the instance masks from polygons
             to bitmaps. Default: True.
         denorm_bbox (bool): Whether to convert bbox from relative value to
@@ -230,6 +235,7 @@ class LoadAnnotations:
                  with_label=True,
                  with_mask=False,
                  with_blink=False,
+                 with_eye_bbox=False,
                  with_seg=False,
                  with_id=False,
                  bitmask=False,
@@ -240,6 +246,7 @@ class LoadAnnotations:
         self.with_label = with_label
         self.with_mask = with_mask
         self.with_blink = with_blink
+        self.with_eye_bbox = with_eye_bbox
         self.with_seg = with_seg
         self.with_id = with_id
         self.bitmask = bitmask
@@ -305,6 +312,22 @@ class LoadAnnotations:
         """
 
         results['gt_blinks'] = results['ann_info']['blinks'].copy()
+        return results
+
+    def _load_eye_bboxes(self, results):
+        """Load eye bounding box annotations."""
+        ann_info = results['ann_info']
+        results['gt_eye_bboxes'] = ann_info['eye_bboxes'].copy()
+
+        if self.denorm_bbox:
+            h, w = results['img_shape'][:2]
+            if results['gt_eye_bboxes'].shape[0] != 0:
+                results['gt_eye_bboxes'][:, 0::2] *= w
+                results['gt_eye_bboxes'][:, 1::2] *= h
+            results['gt_eye_bboxes'] = results[
+                'gt_eye_bboxes'].astype(np.float32)
+
+        results['bbox_fields'].append('gt_eye_bboxes')
         return results
 
     def _load_ids(self, results):
@@ -418,10 +441,12 @@ class LoadAnnotations:
             results = self._load_bboxes(results)
             if results is None:
                 return None
-        if self.with_label: 
-            results = self._load_labels(results) # create a new key 'gt_labels', the value is the labels in  'ann_info'
+        if self.with_label:
+            results = self._load_labels(results)
         if self.with_blink:
             results = self._load_blinks(results)
+        if self.with_eye_bbox:
+            results = self._load_eye_bboxes(results)
         if self.with_mask:
             results = self._load_masks(results)
         if self.with_seg:
@@ -435,6 +460,8 @@ class LoadAnnotations:
         repr_str += f'(with_bbox={self.with_bbox}, '
         repr_str += f'with_label={self.with_label}, '
         repr_str += f'with_mask={self.with_mask}, '
+        repr_str += f'with_blink={self.with_blink}, '
+        repr_str += f'with_eye_bbox={self.with_eye_bbox}, '
         repr_str += f'with_seg={self.with_seg}, '
         repr_str += f'with_id={self.with_id}, '
         repr_str += f'poly2mask={self.poly2mask}, '

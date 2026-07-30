@@ -43,6 +43,7 @@ from .yolo import YOLOV3
 from .yolof import YOLOF
 from .yolox import YOLOX
 from .instblink import InstBlink
+from .instblink_plus import InstBlinkPlus
 
 __all__ = [
     'ATSS', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
@@ -53,5 +54,5 @@ __all__ = [
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SCNet', 'SOLO',
     'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'YOLOX',
     'TwoStagePanopticSegmentor', 'PanopticFPN', 'QueryInst', 'LAD', 'TOOD',
-    'MaskFormer', 'Mask2Former', 'InstBlink'
+    'MaskFormer', 'Mask2Former', 'InstBlink', 'InstBlinkPlus'
 ]

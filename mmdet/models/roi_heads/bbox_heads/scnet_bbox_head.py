@@ -13,7 +13,7 @@ class SCNetBBoxHead(ConvFCBBoxHead):
 
     def _forward_shared(self, x):
         """Forward function for shared part."""
-        """Forward function for shared part."""
+        if self.num_shared_convs > 0:
             for conv in self.shared_convs:
                 x = conv(x)
 
@@ -30,7 +30,7 @@ class SCNetBBoxHead(ConvFCBBoxHead):
 
     def _forward_cls_reg(self, x):
         """Forward function for classification and regression parts."""
-        """Forward function for classification and regression parts."""
+        x_cls = x
         x_reg = x
 
         for conv in self.cls_convs:

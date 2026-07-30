@@ -1,20 +1,23 @@
 import os.path as osp
-import random
 from collections import defaultdict
+
 import mmcv
 import numpy as np
 import torch
 from mmcv.parallel import DataContainer as DC
-from .mpeblink_api import MPEblink
+
 from .builder import DATASETS
 from .custom import CustomDataset
+from .mpeblink_api import MPEblink
 from .pipelines import Compose
 
 
 @DATASETS.register_module()
 class MPEblinkV2Dataset(CustomDataset):
+    """MPEblink2 video dataset with face, eye-region and blink labels."""
 
-    CLASSES = ('person_face')
+    CLASSES = ('person_face', )
+    EYE_REGION_LANDMARKS = (17, 21, 22, 26, 36, 40, 41, 45, 46, 47, 29)
 
     def __init__(self,
                  ann_file,
@@ -69,8 +72,6 @@ class MPEblinkV2Dataset(CustomDataset):
         # set group flag for the sampler
         if not self.test_mode:
             self._set_group_flag()
-        print(f'origin__num = {len(self.data_infos)}')
-        # processing pipeline
         self.data_infos_found = set(self.data_infos)
         self.pipeline = Compose(pipeline)
 
@@ -110,7 +111,7 @@ class MPEblinkV2Dataset(CustomDataset):
 
     def _filter_imgs(self, min_size=32):
         """Filter images too small or without ground truths."""
-        """Filter images too small or without ground truths."""
+        valid_inds = []
         ids_with_ann = []
 
         if self.filter_empty_gt:
@@ -158,28 +159,12 @@ class MPEblinkV2Dataset(CustomDataset):
         ann_ids = self.mpeblink.getAnnIds(vidIds=[vid_id])
         ann_info = self.mpeblink.loadAnns(ann_ids)
         return [ann['category_id'] for ann in ann_info]
-    
-    def Manhattan(self, p1, p2):
-        x1 = p1[0]
-        x2 = p2[0]
-        y1 = p1[1]
-        y2 = p2[1]
-        result = abs(x1 - x2) + abs(y1 - y2)
-        return result
 
-    
-    def get_eye_region(self, pos_left, pos_right):
-        h = self.Manhattan(pos_left, pos_right)
-        return h
-    
-    def get_min_max_position(self, coordinates, indices):
+    @staticmethod
+    def get_min_max_position(coordinates, indices):
         x_values = [coordinates[i][0] for i in indices]
         y_values = [coordinates[i][1] for i in indices]
-        min_x = min(x_values)
-        max_x = max(x_values)
-        min_y = min(y_values)
-        max_y = max(y_values)
-        return min_x, max_x, min_y, max_y
+        return min(x_values), max(x_values), min(y_values), max(y_values)
 
     def _parse_ann_info(self, ann_info, frame_id):
         """Parse bbox and mask annotation.
@@ -200,92 +185,52 @@ class MPEblinkV2Dataset(CustomDataset):
         gt_blinks = []
         gt_eye_bboxes = []
 
-        for i, ann in enumerate(ann_info):
+        for ann in ann_info:
             bbox = ann['bboxes'][frame_id]
-            # area = ann['areas'][frame_id]
             if bbox is None:
                 continue
             x1, y1, w, h = bbox
-            # if area <= 0 or w < 1 or h < 1:
-            #     continue
             bbox = [x1, y1, x1 + w, y1 + h]
 
-            
-
-
-            # if self.with_eye_bbox:
-            #     pos_left = np.empty(shape=[0, 3], dtype=float)
-            #     pos_right = np.empty(shape=[0, 3], dtype=float)
-            #     for i in range(0, 6):
-            #         pos_left = np.append(pos_left, [ann['landmark'][frame_id][42 + i]], axis=0)
-            #         pos_right = np.append(pos_right, [ann['landmark'][frame_id][36 + i]], axis=0)
-
-            #     pos_left = np.mean(pos_left, axis=0)
-            #     pos_right = np.mean(pos_right, axis=0)
-            #     pos_center = (pos_left + pos_right) / 2
-
-
-            # # right_y_start = max(0, int(round(pos_right[1] - 0.5 * h)))
-            # # right_x_start = max(0, int(round(pos_right[0] - 0.5 * h)))
-            # x_start = max(0, int(round(pos_center[0] - 0.75 * h)))
-            # y_start = max(0, int(round(pos_center[1] - 0.25 * h)))
-
-
-
             if self.with_eye_bbox:
-
-                selected_landmark_index = [17, 21, 22, 26, 36, 40, 41, 45, 46, 47, 29]
-
-                min_x, max_x, min_y, max_y = self.get_min_max_position(ann['landmark'][frame_id], selected_landmark_index)
-
-
-                eye_bbox = [min_x, min_y, max_x+1, max_y+1]
-
-
-
-
+                min_x, max_x, min_y, max_y = self.get_min_max_position(
+                    ann['landmark'][frame_id], self.EYE_REGION_LANDMARKS)
+                eye_bbox = [min_x, min_y, max_x + 1, max_y + 1]
             if ann.get('iscrowd', False):
                 gt_bboxes_ignore.append(bbox)
             else:
                 gt_bboxes.append(bbox)
-                gt_ids.append(ann['id'] -
-                              1)
+                gt_ids.append(ann['id'] - 1)
                 gt_labels.append(self.cat2label[ann['category_id']])
                 gt_blinks.append(ann['blinks_binary'][frame_id])
-                gt_eye_bboxes.append(eye_bbox)
+                if self.with_eye_bbox:
+                    gt_eye_bboxes.append(eye_bbox)
         if gt_bboxes:
             gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
             gt_labels = np.array(gt_labels, dtype=np.int64)
             gt_blinks = np.array(gt_blinks, dtype=np.int64)
-            gt_eye_bboxes = np.array(gt_eye_bboxes, dtype=np.float32)
+            gt_ids = np.array(gt_ids, dtype=np.int64)
         else:
             gt_bboxes = np.zeros((0, 4), dtype=np.float32)
             gt_labels = np.array([], dtype=np.int64)
-
+            gt_blinks = np.array([], dtype=np.int64)
+            gt_ids = np.array([], dtype=np.int64)
 
         if gt_bboxes_ignore:
             gt_bboxes_ignore = np.array(gt_bboxes_ignore, dtype=np.float32)
         else:
             gt_bboxes_ignore = np.zeros((0, 4), dtype=np.float32)
 
-
+        parsed = dict(
+            bboxes=gt_bboxes,
+            labels=gt_labels,
+            blinks=gt_blinks,
+            bboxes_ignore=gt_bboxes_ignore,
+            ids=gt_ids)
         if self.with_eye_bbox:
-            ann = dict(
-                bboxes=gt_bboxes,
-                labels=gt_labels,
-                blinks=gt_blinks,
-                eye_bboxes = gt_eye_bboxes,
-                bboxes_ignore=gt_bboxes_ignore,
-                ids=gt_ids)
-        else:
-            ann = dict(
-                bboxes=gt_bboxes,
-                labels=gt_labels,
-                blinks=gt_blinks,
-                bboxes_ignore=gt_bboxes_ignore,
-                ids=gt_ids)
-
-        return ann
+            parsed['eye_bboxes'] = np.array(
+                gt_eye_bboxes, dtype=np.float32).reshape(-1, 4)
+        return parsed
 
     def pre_pipeline(self, results):
         results['img_prefix'] = self.img_prefix
@@ -316,14 +261,28 @@ class MPEblinkV2Dataset(CustomDataset):
                 valid_idxs.append(valid_idx)
         assert len(valid_idxs) > 0
         frame_interval = 2
-        index_pre = [(vid, frame_id - frame_interval*i) for i in range(1, self.clip_length//2 + 1) if (frame_id - frame_interval*i) >= valid_idxs[0][1] and (vid,frame_id - frame_interval*i) in valid_idxs ]
-        pre_res = [(vid, valid_idxs[0][1]) for i in range(0, self.clip_length//2 - len(index_pre))]
+        index_pre = [
+            (vid, frame_id - frame_interval * i)
+            for i in range(1, self.clip_length // 2 + 1)
+            if (frame_id - frame_interval * i) >= valid_idxs[0][1] and (
+                vid, frame_id - frame_interval * i) in valid_idxs
+        ]
+        pre_res = [(vid, valid_idxs[0][1])
+                   for i in range(0, self.clip_length // 2 - len(index_pre))]
         index_pre = index_pre + pre_res
-        index_post = [(vid, frame_id + frame_interval*i) for i in range(1, self.clip_length//2 +1) if (frame_id + frame_interval*i) <= valid_idxs[-1][1] and (vid,frame_id + frame_interval*i) in valid_idxs ]
-        post_res = [(vid, valid_idxs[-1][1]) for i in range(0, self.clip_length//2 - len(index_post))]
+        index_post = [
+            (vid, frame_id + frame_interval * i)
+            for i in range(1, self.clip_length // 2 + 1)
+            if (frame_id + frame_interval * i) <= valid_idxs[-1][1] and (
+                vid, frame_id + frame_interval * i) in valid_idxs
+        ]
+        post_res = [(vid, valid_idxs[-1][1])
+                    for i in range(0, self.clip_length // 2 - len(index_post))]
         index_post += post_res
         index_except_center = index_pre + index_post
-        valid_idxs = [idx] + [self.data_infos.index(_) for _ in index_except_center]
+        valid_idxs = [idx] + [
+            self.data_infos.index(_) for _ in index_except_center
+        ]
         valid_idxs.sort()
 
         clip = []

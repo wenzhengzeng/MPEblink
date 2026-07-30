@@ -85,7 +85,7 @@ performance gains while preserving the real-time advantages, which significant p
 
 ### Data Preparation
 
-1. Download the  [MPEblink 1.0](https://doi.org/10.5281/zenodo.7754768) & [MPEblink2.0](https://huggingface.co/datasets/Tao-HUST/MPEblink2.0). Remember to change the dataset root path into yours in `configs/base/mpeblink.py`.
+1. Download [MPEblink 1.0](https://doi.org/10.5281/zenodo.7754768) and [MPEblink2.0](https://huggingface.co/datasets/Tao-HUST/MPEblink2.0). Set `MPEBLINK2_ROOT` for InstBlink++, or update the corresponding dataset config for InstBlink.
 
 2. Convert the videos to raw frames.
     ```bash
@@ -130,9 +130,11 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
 
 * You can download the pre-trained model at [quark Drive](https://pan.quark.cn/s/0caf047816e2) and put it in the `pretrained_models` directory.
 
-* Run `test_eval_instblink_plus.sh` for inference and evaluation. Remember to change the dataset path into yours.
+* Set the annotation and raw-frame paths, then run `test_eval_instblink_plus.sh`.
 
   ```bash
+  JSON=/path/to/annotations/test.json \
+  ROOT=/path/to/test_rawframes/ \
   bash tools/test_eval_instblink_plus.sh
   ```
 
@@ -140,10 +142,10 @@ You can put some videos in `demo_video/source_video/` and get the visualization 
 
 * Download the pretrained [tevit_r50](https://github.com/hustvl/Storage/releases/download/v1.1.0/tevit_r50.pth) model and place it in the `pretrained_models` directory.
 
-* Run `train_instblink_plus.sh` to begin training.
+* Set the MPEblink2 root and run `train_instblink_plus.sh`.
 
   ```bash
-  bash tools/train_instblink_plus.sh
+  MPEBLINK2_ROOT=/path/to/MPEblink2/ bash tools/train_instblink_plus.sh
   ```
 
 ## ❤️ Acknowledgement

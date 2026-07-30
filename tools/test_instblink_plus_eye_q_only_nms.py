@@ -1,423 +1,355 @@
-import os
-import os.path as osp
 import json
-# os.environ["CUDA_VISIBLE_DEVICES"]='3'
 from argparse import ArgumentParser
-from threading import Thread
-import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import torch
-from mmcv import DictAction
+from mmcv import ConfigDict, DictAction
 from mmcv.parallel import collate, scatter
 from tqdm import tqdm
-import math
-from mmdet.apis import init_detector
 
-from mmdet.datasets.pipelines import Compose
-from mmcv.cnn.utils.flops_counter import add_flops_counting_methods, flops_to_string, params_to_string
+from mmdet.apis import init_detector
 from mmdet.core import build_assigner
-from mmcv import ConfigDict
-import time
-import numpy as np
+from mmdet.datasets.pipelines import Compose
+
 
 def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument('config', help='Config file')
-    parser.add_argument('checkpoint',help='Checkpoint file')
+    parser = ArgumentParser(description='Run InstBlink++ video inference.')
+    parser.add_argument('config', help='Config file.')
+    parser.add_argument('checkpoint', help='Checkpoint file.')
     parser.add_argument(
-        '--json',
-        default="/data/data4/zengwenzheng/data/dataset_building/mpeblink_cvpr2023/annotations/test.json",
-        help='Path to mpeblink test json file')   
+        '--json', required=True, help='MPEblink test annotation JSON file.')
     parser.add_argument(
-        '--root', default="/data/data4/zengwenzheng/data/dataset_building/mpeblink_cvpr2023/test_rawframes/", help='Path to image file') 
+        '--root', required=True, help='Root directory containing test frames.')
     parser.add_argument(
-        '--device', default='cuda:0', help='Device used for inference')
+        '--output',
+        help='Output JSON file. A generated path is used by default.')
     parser.add_argument(
-        '--nms', default=True, help='whether use NMS')
+        '--device', default='cuda:0', help='Device used for inference.')
+    parser.add_argument(
+        '--no-nms',
+        action='store_false',
+        dest='nms',
+        help='Disable temporal NMS.')
+    parser.add_argument(
+        '--clip-len',
+        type=int,
+        help=
+        'Frames per forward pass. Defaults to config.my_infer_cfg.clip_len.')
+    parser.add_argument(
+        '--stride',
+        type=int,
+        help='Clip stride. Defaults to half of clip length.')
+    parser.add_argument(
+        '--match-threshold',
+        type=float,
+        default=0.2,
+        help='Minimum similarity used to link tracks between clips.')
+    parser.add_argument(
+        '--nms-threshold',
+        type=float,
+        default=0.5,
+        help='Similarity threshold used by temporal NMS.')
+    parser.add_argument(
+        '--person-threshold',
+        type=float,
+        help='Detection threshold. Defaults to the value in the config.')
     parser.add_argument(
         '--cfg-options',
         nargs='+',
         action=DictAction,
-        help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
-        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
-    args = parser.parse_args()
-    return args
+        help='Override config settings using key=value pairs.')
+    return parser.parse_args()
 
-def load_datas(data, test_pipeline, datas):
-    datas.append(test_pipeline(data))
 
-def compute_iou(assigner, previous, cur):
-    iou = assigner.assign(previous, cur)
-    return iou
+def build_matcher():
+    matcher_config = ConfigDict(
+        dict(
+            type='FaceLinkerCalculator',
+            cls_cost=dict(type='FocalLossCost', weight=2.0),
+            reg_cost=dict(type='InferenceBBoxL1Cost', weight=5.0),
+            iou_cost=dict(type='IoUCost', iou_mode='iou', weight=1.0)))
+    return build_assigner(matcher_config)
+
+
+def build_clip_ranges(video_length, clip_length, stride):
+    if video_length <= clip_length:
+        return [(0, video_length)]
+
+    last_start = video_length - clip_length
+    starts = list(range(0, last_start + 1, stride))
+    if starts[-1] != last_start:
+        starts.append(last_start)
+    return [(start, start + clip_length) for start in starts]
+
+
+def prepare_clip(file_names, root, pipeline, device):
+
+    def prepare_frame(file_name):
+        data = dict(img_info=dict(filename=file_name), img_prefix=root)
+        return pipeline(data)
+
+    workers = min(8, len(file_names))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        samples = list(executor.map(prepare_frame, file_names))
+
+    batch = collate(samples, samples_per_gpu=len(samples))
+    batch['img_metas'] = batch['img_metas'].data
+    batch['img'] = batch['img'].data
+    return scatter(batch, [device])[0]
+
+
+def stack_clip_results(det_bboxes, eye_bboxes, blink_scores):
+    det_bboxes = torch.stack(det_bboxes).permute(1, 0, 2)
+    eye_bboxes = torch.stack(eye_bboxes).permute(1, 0, 2)
+    blink_scores = torch.stack(blink_scores).permute(1, 0, 2)
+    return det_bboxes, eye_bboxes, blink_scores
+
+
+def filter_queries(det_bboxes, eye_bboxes, blink_scores, threshold):
+    keep = det_bboxes[:, 0, -1] > threshold
+    return det_bboxes[keep], eye_bboxes[keep], blink_scores[keep]
+
+
+def temporal_nms(assigner, det_bboxes, eye_bboxes, blink_scores, img_meta,
+                 threshold):
+    if det_bboxes.shape[0] == 0:
+        return det_bboxes, eye_bboxes, blink_scores
+
+    order = det_bboxes[:, 0, -1].sort(descending=True)[1]
+    det_bboxes = det_bboxes[order]
+    eye_bboxes = eye_bboxes[order]
+    blink_scores = blink_scores[order]
+
+    similarities = assigner.assign(
+        det_bboxes.permute(1, 0, 2), det_bboxes.permute(1, 0, 2), img_meta)
+    suppressed = torch.zeros(
+        det_bboxes.shape[0], dtype=torch.bool, device=similarities.device)
+    keep = []
+    for index in range(det_bboxes.shape[0]):
+        if suppressed[index]:
+            continue
+        keep.append(index)
+        suppressed |= similarities[index] > threshold
+        suppressed[index] = False
+    return det_bboxes[keep], eye_bboxes[keep], blink_scores[keep]
+
+
+def append_new_tracks(video_bboxes, video_eye_bboxes, video_blinks, new_bboxes,
+                      new_eye_bboxes, new_blinks, new_indices):
+    if not new_indices:
+        return video_bboxes, video_eye_bboxes, video_blinks
+
+    new_indices = torch.as_tensor(
+        new_indices, device=new_bboxes.device, dtype=torch.long)
+    prefix_length = video_bboxes.shape[1] - new_bboxes.shape[1]
+    num_new = len(new_indices)
+    bbox_prefix = video_bboxes.new_zeros((num_new, prefix_length, 5))
+    blink_prefix = video_blinks.new_zeros((num_new, prefix_length, 1))
+
+    appended_bboxes = torch.cat([bbox_prefix, new_bboxes[new_indices]], dim=1)
+    appended_eye_bboxes = torch.cat(
+        [bbox_prefix.clone(), new_eye_bboxes[new_indices]], dim=1)
+    appended_blinks = torch.cat([blink_prefix, new_blinks[new_indices]], dim=1)
+
+    video_bboxes = torch.cat([video_bboxes, appended_bboxes], dim=0)
+    video_eye_bboxes = torch.cat([video_eye_bboxes, appended_eye_bboxes],
+                                 dim=0)
+    video_blinks = torch.cat([video_blinks, appended_blinks], dim=0)
+    return video_bboxes, video_eye_bboxes, video_blinks
+
+
+def merge_clip_tracks(assigner, video_bboxes, video_eye_bboxes, video_blinks,
+                      new_bboxes, new_eye_bboxes, new_blinks, overlap,
+                      img_meta, match_threshold):
+    extension = new_bboxes.shape[1] - overlap
+    previous_overlap = video_bboxes[:, -overlap:] if overlap else \
+        video_bboxes[:, :0]
+
+    bbox_padding = video_bboxes.new_zeros(
+        (video_bboxes.shape[0], extension, 5))
+    blink_padding = video_blinks.new_zeros(
+        (video_blinks.shape[0], extension, 1))
+    video_bboxes = torch.cat([video_bboxes, bbox_padding], dim=1)
+    video_eye_bboxes = torch.cat(
+        [video_eye_bboxes, bbox_padding.clone()], dim=1)
+    video_blinks = torch.cat([video_blinks, blink_padding], dim=1)
+
+    if new_bboxes.shape[0] == 0:
+        return video_bboxes, video_eye_bboxes, video_blinks
+    if previous_overlap.shape[0] == 0:
+        return append_new_tracks(video_bboxes, video_eye_bboxes, video_blinks,
+                                 new_bboxes, new_eye_bboxes, new_blinks,
+                                 list(range(new_bboxes.shape[0])))
+    if overlap == 0:
+        return append_new_tracks(video_bboxes, video_eye_bboxes, video_blinks,
+                                 new_bboxes, new_eye_bboxes, new_blinks,
+                                 list(range(new_bboxes.shape[0])))
+
+    similarities = assigner.assign(
+        previous_overlap.permute(1, 0, 2),
+        new_bboxes[:, :overlap].permute(1, 0, 2), img_meta)
+    matched_new = set()
+    for _ in range(min(similarities.shape)):
+        flat_index = int(similarities.argmax().item())
+        old_index = flat_index // similarities.shape[1]
+        new_index = flat_index % similarities.shape[1]
+        score = float(similarities[old_index, new_index].item())
+        similarities[old_index, :] = -10000
+        similarities[:, new_index] = -10000
+        if score < match_threshold:
+            continue
+
+        matched_new.add(new_index)
+        if overlap:
+            overlap_slice = slice(-(extension + overlap), -extension)
+            video_bboxes[
+                old_index,
+                overlap_slice] = (video_bboxes[old_index, overlap_slice] +
+                                  new_bboxes[new_index, :overlap]) / 2
+            video_eye_bboxes[
+                old_index,
+                overlap_slice] = (video_eye_bboxes[old_index, overlap_slice] +
+                                  new_eye_bboxes[new_index, :overlap]) / 2
+            video_blinks[
+                old_index,
+                overlap_slice] = (video_blinks[old_index, overlap_slice] +
+                                  new_blinks[new_index, :overlap]) / 2
+        video_bboxes[old_index, -extension:] = \
+            new_bboxes[new_index, overlap:]
+        video_eye_bboxes[old_index, -extension:] = \
+            new_eye_bboxes[new_index, overlap:]
+        video_blinks[old_index, -extension:] = \
+            new_blinks[new_index, overlap:]
+
+    unmatched = [
+        index for index in range(new_bboxes.shape[0])
+        if index not in matched_new
+    ]
+    return append_new_tracks(video_bboxes, video_eye_bboxes, video_blinks,
+                             new_bboxes, new_eye_bboxes, new_blinks, unmatched)
+
+
+def xyxy_to_xywh(box):
+    if sum(box) == 0:
+        return None
+    x1, y1, x2, y2 = box
+    return [x1, y1, x2 - x1, y2 - y1]
+
+
+def serialize_tracks(video_id, det_bboxes, eye_bboxes, blink_scores):
+    results = []
+    det_bboxes = det_bboxes.permute(1, 0, 2)
+    eye_bboxes = eye_bboxes.permute(1, 0, 2)
+    blink_scores = blink_scores.permute(1, 0, 2)
+
+    for instance_index in range(det_bboxes.shape[1]):
+        frame_scores = det_bboxes[:, instance_index, -1]
+        positive_scores = frame_scores[frame_scores > 0]
+        score = positive_scores.mean().item() if positive_scores.numel() else 0
+        result = dict(
+            video_id=video_id,
+            score=score,
+            category_id=1,
+            bboxes=[],
+            eye_bboxes=[],
+            blink_scores=[],
+            score_per_img=[])
+
+        for frame_index in range(det_bboxes.shape[0]):
+            face_box = det_bboxes[frame_index,
+                                  instance_index, :-1].detach().cpu().tolist()
+            eye_box = eye_bboxes[frame_index,
+                                 instance_index, :-1].detach().cpu().tolist()
+            result['bboxes'].append(xyxy_to_xywh(face_box))
+            result['eye_bboxes'].append(xyxy_to_xywh(eye_box))
+            result['blink_scores'].append(blink_scores[frame_index,
+                                                       instance_index].item())
+            result['score_per_img'].append(frame_scores[frame_index].item())
+        results.append(result)
+    return results
+
 
 def main(args):
     model = init_detector(
         args.config,
         args.checkpoint,
         device=args.device,
-        cfg_options=args.cfg_options) # build_detector
-    model = add_flops_counting_methods(model)
-    cfg = model.cfg
-    anno = json.load(open(args.json))
-    test_pipeline = Compose(cfg.data.test.pipeline)
+        cfg_options=args.cfg_options)
+    config = model.cfg
+    pipeline = Compose(config.data.test.pipeline)
+    matcher = build_matcher()
+
+    clip_length = args.clip_len or config.my_infer_cfg.clip_len
+    stride = args.stride or max(1, clip_length // 2)
+    person_threshold = (
+        args.person_threshold if args.person_threshold is not None else
+        config.my_infer_cfg.person_threshold)
+
+    with open(args.json, encoding='utf-8') as annotation_file:
+        annotations = json.load(annotation_file)
 
     results = []
-    clip_len = 36  # define the video clip length for a single forward propagation
-    stride = 18     # define the stride
+    for video in tqdm(annotations['videos']):
+        file_names = video['file_names']
+        clip_ranges = build_clip_ranges(len(file_names), clip_length, stride)
+        video_bboxes = None
+        video_eye_bboxes = None
+        video_blinks = None
+        previous_end = 0
 
-
-    #clip_len = cfg.my_infer_cfg.clip_len   # define the video clip length for a single forward propagation
-    #stride = clip_len//2     # define the stride
-
-
-    matcher_config = ConfigDict(dict(type='FaceLinkerCalculator',
-                    cls_cost=dict(type='FocalLossCost', weight=2.0),
-                    reg_cost=dict(type='InferenceBBoxL1Cost', weight=5.0),
-                    iou_cost=dict(type='IoUCost', iou_mode='iou',
-                                  weight=1.0)))
-    assigner = build_assigner(matcher_config)
-    iou_threshold = 0.2
-    # person_threshold = 0.5
-    nms_threshold = 0.5
-    person_threshold = cfg.my_infer_cfg.person_threshold
-    # person_threshold = 0.1
-    for video in tqdm(anno['videos']):
-
-        # if video['id'] <=24:
-        #     continue
-        imgs = video['file_names']
-        video_det_bboxes = []
-        video_det_eye_bboxes = []
-
-        video_det_blinks_eye = []
-
-        datas, threads = [], []
-        video_length = len(imgs)
-
-        if video_length <= clip_len:   
-            clip_num = 1
-        else:
-            clip_num = math.ceil((video_length-clip_len)/stride) + 1
-        for clip_index in range(0, clip_num):
-            if clip_index!=clip_num-1:  # Determine if it is the last clip
-                cur_clip = imgs[clip_index*stride:clip_index*stride + clip_len]
-                clip_overlap = clip_len - stride
-            else:   # If it is the last clip, take the last clip_num frame backwards
-                cur_clip = imgs[-clip_len:]
-                if (video_length-clip_len)%stride:
-                    clip_overlap = clip_len - (video_length-clip_len)%stride
-                else:
-                    clip_overlap = clip_len - stride
-            threads = []
-            datas = []
-            for img in cur_clip:
-                data = dict(img_info=dict(filename=img), img_prefix=args.root)
-                threads.append(Thread(target=load_datas, args=(data, test_pipeline, datas)))
-                threads[-1].start()
-            for thread in threads:
-                thread.join()
-
-            datas = sorted(datas, key=lambda x:x['img_metas'].data['filename'])
-            datas = collate(datas, samples_per_gpu=len(cur_clip)) # form the input batch
-            datas['img_metas'] = datas['img_metas'].data
-            datas['img'] = datas['img'].data
-            datas = scatter(datas, [args.device])[0]
+        for start, end in clip_ranges:
+            batch = prepare_clip(file_names[start:end], args.root, pipeline,
+                                 args.device)
             with torch.no_grad():
-                model.start_flops_count()
-                (det_bboxes, det_labels), det_eye_bboxes, det_blinks_eye = model(
-                    return_loss=False,
-                    rescale=True,
-                    format=False,
-                    **datas)    # det_bboxes: [x1,y1,x2,y2].
-                # _, params_count = model.compute_average_flops_cost()
-                # print(params_to_string(params_count))
-                model.stop_flops_count()
-                
-            # Perform inter-clip matching
-            if clip_index!=0:
-
-                previous_det_bboxes_for_match = video_det_bboxes[:,-clip_overlap:,:]
-
-                det_bboxes = torch.stack(det_bboxes)
-                det_eye_bboxes = torch.stack(det_eye_bboxes)
-
-                det_blinks_eye = torch.stack(det_blinks_eye)
-
-                det_bboxes = det_bboxes.permute(1, 0, 2)
-                det_eye_bboxes = det_eye_bboxes.permute(1, 0, 2)
-
-                det_blinks_eye = det_blinks_eye.permute(1, 0, 2)
-
-                # filter prediction results by a confidence threshold
-                det_blinks_eye = det_blinks_eye[torch.where(det_bboxes[:, 0, -1] > person_threshold)]
-
-
-                det_eye_bboxes = det_eye_bboxes[torch.where(det_bboxes[:, 0, -1] > person_threshold)]
-                det_bboxes = det_bboxes[torch.where(det_bboxes[:, 0, -1] > person_threshold)]
-
-
-                if args.nms:
-
-                    # start_time = time.time()
-                    sorted_order = det_bboxes[:,0,-1].sort(descending=True)[1]
-                    det_blinks_eye = det_blinks_eye[sorted_order]
-                    det_eye_bboxes= det_eye_bboxes[sorted_order]
-                    det_bboxes = det_bboxes[sorted_order]
-                    mat_nms = assigner.assign(det_bboxes.permute(1,0,2), det_bboxes.permute(1,0,2), datas['img_metas'][0][0])
-
-
-                    # v1_my_version
-                    # i = 0
-                    # M = det_bboxes.size(0)
-                    # choose_list = torch.arange(0,M).tolist()
-                    # while True:
-                    #     if len(choose_list)<=1:
-                    #         break
-                    #     i = min(choose_list)
-                    #     choose_list.remove(i)
-                    #     for j in choose_list:
-                    #         if mat_nms[i][j] > nms_threshold:
-                    #             preserved_list.remove(j)
-                    #             choose_list.remove(j)
-
-                    ##### v1_my_version
-
-                    # v2_modified from GPT-4-o
-
-
-                    num_samples = det_bboxes.size(0)
-                    preserved_list = []
-                    suppressed = torch.zeros(num_samples, dtype=torch.bool)
-                    for i in range(num_samples):
-                        if not suppressed[i]:
-                            preserved_list.append(i)
-                            suppressed |= (mat_nms[i] > nms_threshold)
-                            suppressed[i] = False
-
-                    
-                    
-
-                    det_blinks_eye = det_blinks_eye[preserved_list]
-                    det_eye_bboxes = det_eye_bboxes[preserved_list]
-                    det_bboxes = det_bboxes[preserved_list]
-
-                    # end_time = time.time()
-                    # total_forward = (end_time - start_time)/clip_len
-                    # print(total_forward)
-                
-
-                previous_person_num = previous_det_bboxes_for_match.size(0)
-
-                # Next, perform pre-padding foe the upcoming clip, length=clip_len-clip_overlap bbox:[0,0,0,0], blink:[0]
-                next_padding_bboxes = torch.zeros([previous_person_num,clip_len-clip_overlap,5]).to(video_det_bboxes.device) 
-                video_det_bboxes = torch.cat((video_det_bboxes, next_padding_bboxes),1)
-                video_det_eye_bboxes = torch.cat((video_det_eye_bboxes, next_padding_bboxes),1)
-                
-                next_padding_blinks = torch.zeros([previous_person_num,clip_len-clip_overlap,1]).to(video_det_blinks_eye.device)
-                video_det_blinks_eye = torch.cat((video_det_blinks_eye, next_padding_blinks),1)
-
-
-                # perform matching
-                previous_det_bboxes_for_iou = previous_det_bboxes_for_match.permute(1,0,2)
-                det_boxes_for_iou = det_bboxes.permute(1,0,2)[:clip_overlap,:,:]
-                mat = assigner.assign(previous_det_bboxes_for_iou, det_boxes_for_iou, datas['img_metas'][0][0])
-
-                det_assigned = torch.zeros(det_bboxes.shape[0])
-                for i in range(0, min(mat.shape)):
-
-                    tar = np.unravel_index(mat.argmax(), mat.shape)
-                    if mat[tar[0], tar[1]] < iou_threshold:
-                        new_person_bboxes = det_bboxes[tar[1], -(clip_len):, :].unsqueeze(0)
-                        new_person_eye_bboxes = det_eye_bboxes[tar[1], -(clip_len):, :].unsqueeze(0)
-
-                        new_person_blinks_eye = det_blinks_eye[tar[1], -(clip_len):, :].unsqueeze(0)
-
-                        new_person_pre_bboxes = torch.zeros([1,video_det_bboxes.size(1)-(clip_len),5]).to(video_det_bboxes.device)
-                        new_person_pre_blinks = torch.zeros([1,video_det_blinks_eye.size(1)-(clip_len),1]).to(video_det_blinks_eye.device)
-
-                        new_person_bboxes = torch.cat((new_person_pre_bboxes, new_person_bboxes), 1)
-                        new_person_eye_bboxes = torch.cat((new_person_pre_bboxes, new_person_eye_bboxes), 1)
-
-                        new_person_blinks_eye = torch.cat((new_person_pre_blinks, new_person_blinks_eye), 1)
-
-
-                        video_det_bboxes = torch.cat((video_det_bboxes, new_person_bboxes), 0)
-                        video_det_eye_bboxes = torch.cat((video_det_eye_bboxes, new_person_eye_bboxes), 0)
-
-                        video_det_blinks_eye = torch.cat((video_det_blinks_eye, new_person_blinks_eye), 0)
-
-
-                        mat[tar[0],:] = -10000
-                        mat[:,tar[1]] = -10000
-                        det_assigned[tar[1]] = 1
-                    else:
-                        mat[tar[0], :] = -10000
-                        mat[:, tar[1]] = -10000
-                        video_det_bboxes[tar[0], -(clip_len-clip_overlap):, :] = det_bboxes[tar[1], -(clip_len-clip_overlap):, :]
-                        video_det_eye_bboxes[tar[0], -(clip_len-clip_overlap):, :] = det_eye_bboxes[tar[1], -(clip_len-clip_overlap):, :]
-
-
-                        video_det_blinks_eye[tar[0], -(clip_len-clip_overlap):, :] = det_blinks_eye[tar[1], -(clip_len-clip_overlap):, :]
-                        # Average the result on overlapping parts
-                        video_det_bboxes[tar[0], -clip_len:-(clip_len-clip_overlap), :] = (video_det_bboxes[tar[0], -clip_len:-(clip_len-clip_overlap), :] + det_bboxes[tar[1], -clip_len:-(clip_len-clip_overlap), :])/2
-
-                        video_det_eye_bboxes[tar[0], -clip_len:-(clip_len-clip_overlap), :] = (video_det_eye_bboxes[tar[0], -clip_len:-(clip_len-clip_overlap), :] + det_eye_bboxes[tar[1], -clip_len:-(clip_len-clip_overlap), :])/2
-                        
-                        
-                        video_det_blinks_eye[tar[0], -clip_len:-(clip_len-clip_overlap), :] = (video_det_blinks_eye[tar[0], -clip_len:-(clip_len-clip_overlap), :] + det_blinks_eye[tar[1], -clip_len:-(clip_len-clip_overlap), :])/2
-
-
-                        det_assigned[tar[1]] = 1    # Mark the new prediction result for index = tar[1] has been processed
-
-                for index in range(0, det_assigned.shape[0]):
-                    if det_assigned[index] == 0: # This new prediction result has not been processed yet and is a new id
-
-                        new_person_bboxes = det_bboxes[index, -(clip_len):, :].unsqueeze(0)
-                        new_person_eye_bboxes = det_eye_bboxes[index, -(clip_len):, :].unsqueeze(0)
-
-                        new_person_blinks_eye = det_blinks_eye[index, -(clip_len):, :].unsqueeze(0)
-
-                        new_person_pre_bboxes = torch.zeros([1,video_det_bboxes.size(1)-(clip_len),5]).to(video_det_bboxes.device)
-                        new_person_pre_blinks = torch.zeros([1,video_det_blinks_eye.size(1)-(clip_len),1]).to(video_det_blinks_eye.device)
-
-                        new_person_bboxes = torch.cat((new_person_pre_bboxes, new_person_bboxes), 1)
-                        new_person_eye_bboxes = torch.cat((new_person_pre_bboxes, new_person_eye_bboxes), 1)
-
-                        new_person_blinks_eye = torch.cat((new_person_pre_blinks, new_person_blinks_eye), 1)
-
-                        video_det_bboxes = torch.cat((video_det_bboxes, new_person_bboxes), 0)
-                        video_det_eye_bboxes = torch.cat((video_det_eye_bboxes, new_person_eye_bboxes), 0)
-
-                        video_det_blinks_eye = torch.cat((video_det_blinks_eye, new_person_blinks_eye), 0)
-                        
-                        det_assigned[index] = 1    # Mark the new prediction result for index = tar[1] has been processed
-
-                    
-            else: # for the first video_cilp
-
-                det_bboxes = torch.stack(det_bboxes)
-                det_eye_bboxes = torch.stack(det_eye_bboxes)
-                # det_labels = torch.stack(det_labels)
-                det_blinks_eye = torch.stack(det_blinks_eye)
-
-                det_bboxes = det_bboxes.permute(1,0,2)
-                det_eye_bboxes = det_eye_bboxes.permute(1,0,2)
-
-                det_blinks_eye = det_blinks_eye.permute(1,0,2)
-
-                video_det_blinks_eye = det_blinks_eye[torch.where(det_bboxes[:,0,-1]>person_threshold)]
-
-
-                # video_det_labels = det_labels[torch.where(det_bboxes[:, 0, -1])> 0.7]
-                video_det_eye_bboxes = det_eye_bboxes[torch.where(det_bboxes[:,0,-1]>person_threshold)]
-                video_det_bboxes = det_bboxes[torch.where(det_bboxes[:,0,-1]>person_threshold)]
-
-                if args.nms:
-
-                    # start_time =time.time()
-      
-                    sorted_order = video_det_bboxes[:,0,-1].sort(descending=True)[1]
-                    video_det_blinks_eye = video_det_blinks_eye[sorted_order]
-                    video_det_eye_bboxes= video_det_eye_bboxes[sorted_order]
-                    video_det_bboxes = video_det_bboxes[sorted_order]
-                    mat_nms = assigner.assign(video_det_bboxes.permute(1,0,2), video_det_bboxes.permute(1,0,2), datas['img_metas'][0][0])
-
-                    #### v1_my_version ####
-                    
-                    # i = 0
-                    # M = video_det_bboxes.size(0)
-                    # choose_list = torch.arange(0,M).tolist()
-                    # while True:
-                    #     if len(choose_list)<=1:
-                    #         break
-                    #     i = min(choose_list)
-                    #     choose_list.remove(i)
-                    #     for j in choose_list:
-                    #         if mat_nms[i][j] > nms_threshold:
-                    #             preserved_list.remove(j)
-                    #             choose_list.remove(j)
-                    #             
-
-                    #             mat_nms[:,j] = 0
-                    #             mat_nms[i,:] = 0 
-                    #### v1_my_version ####
-
-                    # v2_modified from GPT4-o
-                    num_samples = video_det_bboxes.size(0)
-                    preserved_list = []
-                    suppressed = torch.zeros(num_samples, dtype=torch.bool)
-                    for i in range(num_samples):
-                        if not suppressed[i]:
-                            preserved_list.append(i)
-                            suppressed |= (mat_nms[i] > nms_threshold)
-                            suppressed[i] = False
-
-
-
-                    video_det_blinks_eye = video_det_blinks_eye[preserved_list]
-                    video_det_eye_bboxes = video_det_eye_bboxes[preserved_list]
-                    video_det_bboxes = video_det_bboxes[preserved_list]
-                    
-                    # end_time = time.time()
-                    # total_forward = (end_time - start_time)/clip_len
-                    # print(total_forward)
-                
-
-
-        det_bboxes =  video_det_bboxes.permute(1,0,2)
-        det_eye_bboxes =  video_det_eye_bboxes.permute(1,0,2)
-        det_blinks_eye = video_det_blinks_eye.permute(1,0,2)
-
-
-        for inst_ind in range(det_bboxes.size(1)):
-            objs = dict(
-                video_id=video['id'],
-                score=det_bboxes[:, inst_ind, -1][torch.where(det_bboxes[:, inst_ind, -1]>0)].mean().item(),
-                category_id=1,
-                bboxes=[],
-                eye_bboxes=[],
-                blink_scores=[],
-                score_per_img=[]
-                )
-            for sub_ind in range(det_bboxes.size(0)):   # for the prediction results of each frame
-                m = det_bboxes[
-                    sub_ind, inst_ind,
-                    :-1].detach().cpu().numpy().tolist()
-                if (m[0] + m[1] + m[2] + m[3]) == 0:
-                    m = None
-                else:
-                    m = [m[0],m[1],m[2]-m[0],m[3]-m[1]]
-                
-                n = det_eye_bboxes[
-                    sub_ind, inst_ind,
-                    :-1].detach().cpu().numpy().tolist()
-                if (n[0] + n[1] + n[2] + n[3]) == 0:
-                    m = None
-                else:
-                    n = [n[0],n[1],n[2]-n[0],n[3]-n[1]]
-
-                objs['bboxes'].append(m)
-                objs['eye_bboxes'].append(n)
-
-                objs['blink_scores'].append(det_blinks_eye[sub_ind,inst_ind].item())
-                objs['score_per_img'].append(det_bboxes[sub_ind,inst_ind,-1].item())
-            results.append(objs)
-
-    # export results to json format
-    # os.makedirs('results',exist_ok=True)
-    os.makedirs('results/test_results',exist_ok=True)
-    if args.nms:
-        write_path = os.path.join('results/test_results', f'{args.config.rstrip(".py").split("/")[-1]}_NMS_{args.json.split("/")[-1]}')
+                (det_bboxes, _), eye_bboxes, blink_scores = model(
+                    return_loss=False, rescale=True, format=False, **batch)
+
+            det_bboxes, eye_bboxes, blink_scores = stack_clip_results(
+                det_bboxes, eye_bboxes, blink_scores)
+            det_bboxes, eye_bboxes, blink_scores = filter_queries(
+                det_bboxes, eye_bboxes, blink_scores, person_threshold)
+            if args.nms:
+                det_bboxes, eye_bboxes, blink_scores = temporal_nms(
+                    matcher, det_bboxes, eye_bboxes, blink_scores,
+                    batch['img_metas'][0][0], args.nms_threshold)
+
+            if video_bboxes is None:
+                video_bboxes = det_bboxes
+                video_eye_bboxes = eye_bboxes
+                video_blinks = blink_scores
+            else:
+                overlap = max(0, previous_end - start)
+                video_bboxes, video_eye_bboxes, video_blinks = \
+                    merge_clip_tracks(
+                        matcher,
+                        video_bboxes,
+                        video_eye_bboxes,
+                        video_blinks,
+                        det_bboxes,
+                        eye_bboxes,
+                        blink_scores,
+                        overlap,
+                        batch['img_metas'][0][0],
+                        args.match_threshold)
+            previous_end = end
+
+        if video_bboxes is not None and video_bboxes.shape[0] > 0:
+            results.extend(
+                serialize_tracks(video['id'], video_bboxes, video_eye_bboxes,
+                                 video_blinks))
+
+    if args.output:
+        output_path = Path(args.output)
     else:
-        write_path = os.path.join('results/test_results', f'{args.config.rstrip(".py").split("/")[-1]}_{args.json.split("/")[-1]}')
-    json.dump(results, open(write_path, 'w'))
-    print('Done')
-    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+        suffix = '_NMS' if args.nms else ''
+        output_path = Path('results/test_results') / (
+            f'{Path(args.config).stem}{suffix}_{Path(args.json).name}')
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w', encoding='utf-8') as output_file:
+        json.dump(results, output_file)
+    print(f'Wrote {output_path}')
+
 
 if __name__ == '__main__':
-    args = parse_args()
-    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
-    main(args)
+    main(parse_args())

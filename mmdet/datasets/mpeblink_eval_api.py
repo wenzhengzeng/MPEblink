@@ -2,7 +2,7 @@ __author__ = 'Wenzheng Zeng'
 #--------------------------------------------------------------------------
 # Modified from YouTubeVIS API (https://github.com/youtubevos/cocoapi)
 
-import time
+
 import numpy as np
 import datetime
 import time
@@ -10,10 +10,7 @@ from collections import defaultdict
 from copy import deepcopy
 from numpy import *
 import pandas as pd
-import os
-from loguru import logger
-import json
-import random
+
 class MPEblinkEval:
     # Interface for evaluating on the MPEblink dataset.
     # Modified from YouTubeVIS API (https://github.com/youtubevos/cocoapi)
@@ -67,7 +64,7 @@ class MPEblinkEval:
     # Data, paper, and tutorials available at:  http://mscoco.org/
     # Code written by Piotr Dollar and Tsung-Yi Lin, 2015.
     # Licensed under the Simplified BSD License [see coco/license.txt]
-    def __init__(self, cocoGt=None, cocoDt=None, iouType='segm', pred_json=None):
+    def __init__(self, cocoGt=None, cocoDt=None, iouType='segm'):
         '''
         Initialize CocoEval using coco APIs for gt and dt
         :param cocoGt: coco object with ground truth annotations
@@ -76,21 +73,17 @@ class MPEblinkEval:
         '''
         if not iouType:
             print('iouType not specified. use default iouType segm')
-        self.cocoGt   = cocoGt
-        self.cocoDt   = cocoDt
+        self.cocoGt   = cocoGt              # ground truth COCO API  
+        self.cocoDt   = cocoDt              # detections COCO API  
         self.params   = {}                  # evaluation parameters
         self.evalVids = defaultdict(list)   # per-image per-category evaluation results [KxAxI] elements
         self.eval     = {}                  # accumulated evaluation results
         self._gts = defaultdict(list)       # gt for evaluation
         self._dts = defaultdict(list)       # dt for evaluation
-        self.params = Params(iouType=iouType)
+        self.params = Params(iouType=iouType) # parameters
         self._paramsEval = {}               # parameters for evaluation
         self.stats = []                     # result summarization
         self.ious = {}                      # ious between all gts and dts
-        self.out_name = pred_json.split('/')[-1].lstrip('.json')
-        self.iou_ap50 = {}
-        logger.add(f'results/eval_results/{self.out_name}.log', mode="w")
-        os.makedirs('results/eval_results', exist_ok=True)
         if not cocoGt is None:
             self.params.vidIds = sorted(cocoGt.getVidIds())
             self.params.catIds = sorted(cocoGt.getCatIds())
@@ -115,8 +108,8 @@ class MPEblinkEval:
                   ann['avg_area'] = np.array(l).mean()
         p = self.params
         if p.useCats:
-            gts=self.cocoGt.loadAnns(self.cocoGt.getAnnIds(vidIds=p.vidIds, catIds=p.catIds))
-            dts=self.cocoDt.loadAnns(self.cocoDt.getAnnIds(vidIds=p.vidIds, catIds=p.catIds))
+            gts=self.cocoGt.loadAnns(self.cocoGt.getAnnIds(vidIds=p.vidIds, catIds=p.catIds))   # Each element in gts represents an gt instance
+            dts=self.cocoDt.loadAnns(self.cocoDt.getAnnIds(vidIds=p.vidIds, catIds=p.catIds))   # Each element in dts represents an predicted instance
         else:
             gts=self.cocoGt.loadAnns(self.cocoGt.getAnnIds(vidIds=p.vidIds))
             dts=self.cocoDt.loadAnns(self.cocoDt.getAnnIds(vidIds=p.vidIds))
@@ -134,7 +127,7 @@ class MPEblinkEval:
         self._gts = defaultdict(list)       # gt for evaluation
         self._dts = defaultdict(list)       # dt for evaluation
         for gt in gts:
-            self._gts[gt['video_id'], gt['category_id']].append(gt)
+            self._gts[gt['video_id'], gt['category_id']].append(gt) 
         for dt in dts:
             self._dts[dt['video_id'], dt['category_id']].append(dt)
         self.evalVids = defaultdict(list)   # per-image per-category evaluation results
@@ -145,20 +138,19 @@ class MPEblinkEval:
         Run per image evaluation on given images and store results (a list of dict) in self.evalVids
         :return: None
         '''
-        p = self.params
         tic = time.time()
         print('Running per image evaluation...')
-       
+        p = self.params
         # add backward compatibility if useSegm is specified in params
         if not p.useSegm is None:
             p.iouType = 'segm' if p.useSegm == 1 else 'bbox'
             print('useSegm (deprecated) is not None. Running {} evaluation'.format(p.iouType))
         print('Evaluate annotation type *{}*'.format(p.iouType))
-        p.vidIds = list(np.unique(p.vidIds))
+        p.vidIds = list(np.unique(p.vidIds))    
         if p.useCats:
-            p.catIds = list(np.unique(p.catIds))
-        p.maxDets = sorted(p.maxDets)
-        self.params = p
+            p.catIds = list(np.unique(p.catIds))    
+        p.maxDets = sorted(p.maxDets)   
+        self.params=p
 
         self._prepare()
         # loop through images, area range, max detection number
@@ -174,6 +166,7 @@ class MPEblinkEval:
 
         evaluateVid = self.evaluateVid
         maxDet = p.maxDets[-1]
+
 
         self.evalImgs = [evaluateVid(vidId, catId, areaRng, maxDet)
                  for catId in catIds
@@ -194,19 +187,17 @@ class MPEblinkEval:
             dt = [_ for cId in p.catIds for _ in self._dts[vidId,cId]]
         if len(gt) == 0 and len(dt) ==0:
             return []
-        inds = np.argsort([-d['score'] for d in dt], kind='mergesort')
-        dt = [dt[i] for i in inds]
+        inds = np.argsort([-d['score'] for d in dt], kind='mergesort')  
+        dt = [dt[i] for i in inds]  # Sort the confidence of each prediction dt of the current class of the current video from largest to smallest according to the sorting index obtained in the previous line
         if len(dt) > p.maxDets[-1]:
             dt=dt[0:p.maxDets[-1]]
 
         if p.iouType == 'segm':
-            g = [g['segmentations'] for g in gt]
-            d = [d['segmentations'] for d in dt]
+            g = [g['segmentations'] for g in gt]  
+            d = [d['segmentations'] for d in dt]    
         elif p.iouType == 'bbox':
-            g = [g['bboxes'] for g in gt]
-            d = [d['bboxes'] for d in dt]
-            
-            
+            g = [g['bboxes'] for g in gt]   # Get the bbox of the gt
+            d = [d['bboxes'] for d in dt]   # Get the bbox of the dt
         else:
             raise Exception('unknown iouType for iou computation')
 
@@ -216,35 +207,31 @@ class MPEblinkEval:
         def iou_seq(d_seq, g_seq):
             i = .0
             u = .0
-            for d, g in zip(d_seq, g_seq):
-                if d and g:
-                    i += self.compute_frame_i(d,g)
+            for d, g in zip(d_seq, g_seq):  # for each frame
+                # If neither pred nor gt of this frame is none, calculate the intersection and merge of these two frames and add them to the total intersection and merge in the video
+                if d and g: 
+                    i += self.compute_frame_i(d,g)  
                     u += self.compute_frame_u(d,g)
                 elif not d and g:
                     u += g[2]*g[3]
-                elif d and not g:
-                    u += d[2]*d[3]
+                elif d and not g:   
+                    u += d[2]*d[3]   # w*h，the area of the box
             if not u > .0:
                 print("Mask sizes in video {} and category {} may not match!".format(vidId, catId))
             iou = i / u if u > .0 else .0
             return iou
         ious = np.zeros([len(d), len(g)])
         for i, j in np.ndindex(ious.shape):
-            #for idx, bbox in enumerate(g[j]):
-            #  if bbox is None or vidId <= 182:
-            #    continue
-                
-            #  bbox = [bbox[0] + 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3], bbox[2], bbox[3]]
-            #  g[j][idx] = bbox
-            #print(ious[i, j], d[i][0], g[j][0])  
-            ious[i, j] = iou_seq(d[i], g[j])
-        return ious
+            ious[i, j] = iou_seq(d[i], g[j])    # Calculate the spatio-temporal iou for the specified pred and gt in a video
+        return ious 
 
     def compute_frame_i(self, d, g):
+        # Calculate the intersection area of d and g in the current frame 
         left_column_max = max(d[0], g[0])
         right_column_min = min(d[0]+d[2], g[0]+g[2])
         up_row_max = max(d[1], g[1])
         down_row_min = min(d[1]+d[3], g[1]+g[3])
+        # The case of two rectangles without intersecting regions
         if left_column_max >= right_column_min or down_row_min <= up_row_max:
             return 0
         else:
@@ -252,13 +239,16 @@ class MPEblinkEval:
             return S_cross
 
     def compute_frame_u(self, d, g):
+        # Calculate the concatenated area of d and g in the current frame 
 
         S1 = (d[2]) * (d[3])
         S2 = (g[2]) * (g[3])
+        # Calculate the intersection area of d and g in the current frame 
         left_column_max = max(d[0], g[0])
         right_column_min = min(d[0] + d[2], g[0] + g[2])
         up_row_max = max(d[1], g[1])
         down_row_min = min(d[1] + d[3], g[1] + g[3])
+        # two rectangles without intersecting regions
         if left_column_max >= right_column_min or down_row_min <= up_row_max:
             return S1+S2
         else:
@@ -316,18 +306,18 @@ class MPEblinkEval:
         '''
         p = self.params
         if p.useCats:
-            gt = self._gts[vidId,catId]
-            dt = self._dts[vidId,catId]
+            gt = self._gts[vidId,catId] # Get get gt of the current category in current video
+            dt = self._dts[vidId,catId] # Get get dt of the current category in current video
         else:
             gt = [_ for cId in p.catIds for _ in self._gts[vidId,cId]]
             dt = [_ for cId in p.catIds for _ in self._dts[vidId,cId]]
-        
         if len(gt) == 0 and len(dt) ==0:
             return None
 
         for g in gt:
             # if g['ignore'] or (g['avg_area']<aRng[0] or g['avg_area']>aRng[1]):
             #     g['_ignore'] = 1
+            # if g['ignore'] or (mean(g['areas'])<aRng[0] or mean(g['areas'])>aRng[1]):
             #     g['_ignore'] = 1
             # else:
             #     g['_ignore'] = 0
@@ -337,11 +327,11 @@ class MPEblinkEval:
         gtind = np.argsort([g['_ignore'] for g in gt], kind='mergesort')
         gt = [gt[i] for i in gtind]
         dtind = np.argsort([-d['score'] for d in dt], kind='mergesort')
-        dt = [dt[i] for i in dtind[0:maxDet]]
+        dt = [dt[i] for i in dtind[0:maxDet]]   # Sort predictions by confidence level from largest to smallest
         # iscrowd = [int(o['iscrowd']) for o in gt]
         # load computed ious
         ious = self.ious[vidId, catId][:, gtind] if len(self.ious[vidId, catId]) > 0 else self.ious[vidId, catId]
-        
+
         T = len(p.iouThrs)
         G = len(gt)
         D = len(dt)
@@ -349,15 +339,15 @@ class MPEblinkEval:
         dtm  = np.zeros((T,D))
         gtIg = np.array([g['_ignore'] for g in gt])
         dtIg = np.zeros((T,D))
-        if not len(ious)==0:
-            for tind, t in enumerate(p.iouThrs):
+        if not len(ious)==0:    # Determine the matching relationship between gt and pred, which is same as temporal AP in ActivityNet
+            for tind, t in enumerate(p.iouThrs):    # The IoU threshold is traversed, 0.5:0.95 for a total of 10 values
                 for dind, d in enumerate(dt):
                     # information about best match so far (m=-1 -> unmatched)
                     iou = min([t,1-1e-10])
                     m   = -1
                     for gind, g in enumerate(gt):
                         # if this gt already matched, and not a crowd, continue
-                        if gtm[tind,gind]>0:
+                        if gtm[tind,gind]>0:  
                             continue
                         # if dt matched to reg gt, and on ignore gt, stop
                         if m>-1 and gtIg[m]==0 and gtIg[gind]==1:
@@ -366,47 +356,31 @@ class MPEblinkEval:
                         if ious[dind,gind] < iou:
                             continue
                         # if match successful and best so far, store appropriately
-                        iou=ious[dind,gind]
+                        iou=ious[dind,gind] # Here iou will be updated to the current maximum iou, so after the loop, the item with the maximum iou will be matched
                         m=gind
                     # if match made store id of match for both dt and gt
                     if m ==-1:
                         continue
                     dtIg[tind,dind] = gtIg[m]
-                    dtm[tind,dind]  = gt[m]['id']
-                    gtm[tind,m]     = d['id']
+                    dtm[tind,dind]  = gt[m]['id']   # The 'dind' pred matches the 'm' (m=gind) gt, now record the index of the gt it matches
+                    gtm[tind,m]     = d['id']   # The gt with index 'gind' is matched to pred, now record the index of its matched pred
         # set unmatched detections outside of area range to ignore
         a = np.array([d['avg_area']<aRng[0] or d['avg_area']>aRng[1] for d in dt]).reshape((1, len(dt)))
-        dtIg = np.logical_or(dtIg, np.logical_and(dtm==0, np.repeat(a,T,0)))
+        dtIg = np.logical_or(dtIg, np.logical_and(dtm==0, np.repeat(a,T,0)))   
         # store results for given image and category
-
-
-        ######################################################
-    
-    ######################################################
-        #print(dtm[0], gtm[0])
-        TP = len([dt for dt in dtm[0] if dt != 0])
-        FP = len([dt for dt in dtm[0] if dt == 0])
-        FN = len([dt for dt in gtm[0] if dt != 0])
-
         return {
                 'video_id':     vidId,
                 'category_id':  catId,
                 'aRng':         aRng,
                 'maxDet':       maxDet,
-                'dtIds':        [d['id'] for d in dt],
-                'gtIds':        [g['id'] for g in gt],
-                'dtMatches':    dtm,
-                'gtMatches':    gtm,
-                'dtScores':     [d['score'] for d in dt],
+                'dtIds':        [d['id'] for d in dt],   
+                'gtIds':        [g['id'] for g in gt],  
+                'dtMatches':    dtm,    # Two-dimensional array, each row represents an iou threshold, each element in a row corresponds to each dt (after sorting), its value is the matched gt id, this id is global (the id of all samples), 0 is no match to gt
+                'gtMatches':    gtm,    # Two-dimensional array, each row represents an iou threshold, each element within a row corresponds to each gt (after sorting), its value is the matched dt id, this id is also global, 0 is no match to the requested dt
+                'dtScores':     [d['score'] for d in dt],   # dt confidence, ranked
                 'gtIgnore':     gtIg,
                 'dtIgnore':     dtIg,
-                 'fp': FP,
-                 'tp': TP,
-                 'fn': FN,
             }
-
-
-    
 
     def accumulate(self, p = None):
         '''
@@ -419,10 +393,6 @@ class MPEblinkEval:
         if not self.evalImgs:
             print('Please run evaluate() first')
         # allows input customized parameters
-        self.iou_ap50['TP'] = sum([img['tp'] for img in self.evalImgs])
-        self.iou_ap50['FP'] = sum([img['fp'] for img in self.evalImgs])
-        self.iou_ap50['FN'] = sum([img['fn'] for img in self.evalImgs])
-
         if p is None:
             p = self.params
         p.catIds = p.catIds if p.useCats == 1 else [-1]
@@ -436,19 +406,17 @@ class MPEblinkEval:
         scores      = -np.ones((T,R,K,A,M))
 
         # create dictionary for future indexing
-        _pe = self._paramsEval
+        _pe = self._paramsEval  # some configuration, such as IoU threshold
         catIds = _pe.catIds if _pe.useCats else [-1]
         setK = set(catIds)
         setA = set(map(tuple, _pe.areaRng))
         setM = set(_pe.maxDets)
         setI = set(_pe.vidIds)
-      
         # get inds to evaluate
         k_list = [n for n, k in enumerate(p.catIds)  if k in setK]
         m_list = [m for n, m in enumerate(p.maxDets) if m in setM]
         a_list = [n for n, a in enumerate(map(lambda x: tuple(x), p.areaRng)) if a in setA]
         i_list = [n for n, i in enumerate(p.vidIds)  if i in setI]
-   
         I0 = len(_pe.vidIds)
         A0 = len(_pe.areaRng)
         # retrieve E at each category, area range, and max number of detections
@@ -458,62 +426,56 @@ class MPEblinkEval:
             for a, a0 in enumerate(a_list):
                 Na = a0*I0
                 ################################################
+                # extract the dt and gt of the instance-level TP predictions, in preparation for the subsequent calculation of the Blink-AP
                 E = [self.evalImgs[Nk + Na + i] for i in i_list]
-                # E = [e for e in E if not e is None]
+                
                 gt_match_info = np.concatenate([e['gtMatches'] for e in E], axis=1)
-                # print(1)
-                debug_num = 0
+
                 for iou in range(0,10):
                     iou_type = 0.5 + iou*0.05
                     gt_collection = []
                     dt_collection = []
-                    
                     for gt_index in range(0,len(gt_match_info[iou])):
                         matched_dt_id = int(gt_match_info[iou][gt_index])
                         if matched_dt_id == 0:
                             continue
                         real_gt_id = gt_index+1
-                        
-                        
                         self.cocoGt.loadAnns(real_gt_id)
                         gt_collection.append({'gt_ID':real_gt_id, 'blinks':self.cocoGt.loadAnns(real_gt_id)[0]['blinks']})
                         dt_collection.append({'gt_ID':real_gt_id, 'blinks':self.cocoDt.loadAnns(matched_dt_id)[0]['blinks_converted']})
-                        
-                    
                     self.blink_eval_info.append({'iou':iou_type, 'areaRng':_pe.areaRng[a0], 'dt_data':dt_collection, 'gt_data':gt_collection})
 
-               
-                ################################################
+
                 for m, maxDet in enumerate(m_list):
-                    E = [self.evalImgs[Nk + Na + i] for i in i_list]
+                    E = [self.evalImgs[Nk + Na + i] for i in i_list]    # all predicitons of the current category
                     E = [e for e in E if not e is None]
                     if len(E) == 0:
                         continue
-                    dtScores = np.concatenate([e['dtScores'][0:maxDet] for e in E])
+                    dtScores = np.concatenate([e['dtScores'][0:maxDet] for e in E]) # topK confidence pred is taken out for each video
 
                     # different sorting method generates slightly different results.
                     # mergesort is used to be consistent as Matlab implementation.
                     inds = np.argsort(-dtScores, kind='mergesort')
-                    dtScoresSorted = dtScores[inds]
+                    dtScoresSorted = dtScores[inds] # pred does not distinguish between video, arranged in descending order
 
                     dtm  = np.concatenate([e['dtMatches'][:,0:maxDet] for e in E], axis=1)[:,inds]
                     dtIg = np.concatenate([e['dtIgnore'][:,0:maxDet]  for e in E], axis=1)[:,inds]
                     gtIg = np.concatenate([e['gtIgnore'] for e in E])
-                    npig = np.count_nonzero(gtIg==0 )
+                    npig = np.count_nonzero(gtIg==0 )   # total gt num
                     if npig == 0:
                         continue
-                    tps = np.logical_and(               dtm,  np.logical_not(dtIg) )
-                    fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )
+                    tps = np.logical_and(               dtm,  np.logical_not(dtIg) )    # TP 
+                    fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )    # FP 
 
-                    tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float64)
-                    fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float64)
-                    for t, (tp, fp) in enumerate(zip(tp_sum, fp_sum)):
+                    tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float)  # accumulate TP
+                    fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float)
+                    for t, (tp, fp) in enumerate(zip(tp_sum, fp_sum)):  # for each iou threshold
                         tp = np.array(tp)
                         fp = np.array(fp)
                         nd = len(tp)
                         rc = tp / npig  # recall
                         pr = tp / (fp+tp+np.spacing(1)) # precision
-                        q  = np.zeros((R,))
+                        q  = np.zeros((R,)) # q is the PR curve, subdivided into R(101) points
                         ss = np.zeros((R,))
 
                         if nd:
@@ -527,13 +489,13 @@ class MPEblinkEval:
 
                         for i in range(nd-1, 0, -1):
                             if pr[i] > pr[i-1]:
-                                pr[i-1] = pr[i]
+                                pr[i-1] = pr[i] # Ensure that theprecision is monotonically decreasing in confidence
 
                         inds = np.searchsorted(rc, p.recThrs, side='left')
                         try:
                             for ri, pi in enumerate(inds):
-                                q[ri] = pr[pi]
-                                ss[ri] = dtScoresSorted[pi]
+                                q[ri] = pr[pi]  # q is the PR curve, subdivided into 101 points
+                                ss[ri] = dtScoresSorted[pi] # get the confidence level of each point corresponding to the pr curve
                         except:
                             pass
                         precision[t,:,k,a,m] = np.array(q)
@@ -543,17 +505,18 @@ class MPEblinkEval:
             'counts': [T, R, K, A, M],
             'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'precision': precision,
-            'recall':   recall,
+            'recall':   recall, 
             'scores': scores,
         }
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format( toc-tic))
 
     def action_ap(self):
+        # calculate Blink-AP
         index=0
         for config in self.blink_eval_info:
             index +=1
-            if index>10:
+            if index>1: # Now we only focus on the cases where area type is 'all', and print the Blink-AP under Instance-level IoU = 0.5
                 break
             gt = np.empty(shape=[0, 3], dtype=int)
             for instance in config['gt_data']:
@@ -576,21 +539,10 @@ class MPEblinkEval:
             })
             ap = self.compute_average_precision_detection(ground_truth, prediction,
                                                      tiou_thresholds=np.linspace(0.5, 0.95, 10))
-            
-            # print(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.5={ap[0]}')
-            # print(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.75={ap[5]}')
-            # print(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.95={ap[-1]}')
-            # print(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.5:0.95={ap.mean()}')
-            if index == 1:
-                #print(ap[0], self.iou_ap50)
-                logger.info(f"IB_0.5={ap[0] * self.iou_ap50['TP'] / (self.iou_ap50['TP'] + 0.5 * self.iou_ap50['FP'] + 0.5 * self.iou_ap50['FN'] + 1e-6)} ")
-                logger.info(f"IB_0.75={ap[5] * self.iou_ap50['TP'] / (self.iou_ap50['TP'] + 0.5 * self.iou_ap50['FP'] + 0.5 * self.iou_ap50['FN'] + 1e-6)} ")
-                logger.info(f"IB_0.5:0.95={ap.mean() * self.iou_ap50['TP'] / (self.iou_ap50['TP'] + 0.5 * self.iou_ap50['FP'] + 0.5 * self.iou_ap50['FN'] + 1e-6)} ")
-            logger.info(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.5={ap[0]}')
-            logger.info(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.75={ap[5]}')
-            logger.info(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.95={ap[-1]}')
-            logger.info(f'instance_level_iou@{config["iou"]}, area@{config["areaRng"]}, action_level_AP@0.5:0.95={ap.mean()}')
-
+            print(f'Instance-level IoU={config["iou"]}, area@{config["areaRng"]}, Blink-AP@0.5={ap[0]}')
+            print(f'Instance-level IoU={config["iou"]}, area@{config["areaRng"]}, Blink-AP@0.75={ap[5]}')
+            print(f'Instance-level IoU={config["iou"]}, area@{config["areaRng"]}, Blink-AP@0.95={ap[-1]}')
+            print(f'Instance-level IoU={config["iou"]}, area@{config["areaRng"]}, Blink-AP@0.5:0.95={ap.mean()}')
 
 
     def compute_average_precision_detection(self, ground_truth, prediction, tiou_thresholds=np.linspace(0.5, 0.95, 10)):
@@ -618,10 +570,10 @@ class MPEblinkEval:
         ap = np.zeros(len(tiou_thresholds))
 
         npos = float(len(ground_truth))
-        lock_gt = np.ones((len(tiou_thresholds), len(ground_truth))) * -1
+        lock_gt = np.ones((len(tiou_thresholds), len(ground_truth))) * -1  # [num_tiou, num_gt] Initial values are all -1
         # Sort predictions by decreasing score order.
         sort_idx = prediction['score'].values.argsort()[::-1]
-        prediction = prediction.loc[sort_idx].reset_index(drop=True)
+        prediction = prediction.loc[sort_idx].reset_index(drop=True)  # Sorted by confidence from highest to lowest, not distinguishing video_id
 
         # Initialize true positive and false positive vectors.
         tp = np.zeros((len(tiou_thresholds), len(prediction)))
@@ -631,12 +583,12 @@ class MPEblinkEval:
         ground_truth_gbvn = ground_truth.groupby('video-id')
 
         # Assigning true positive to truly grount truth instances.
-        for idx, this_pred in prediction.iterrows():
+        for idx, this_pred in prediction.iterrows():  # Iterate through each prediction
             # print(this_pred)
             try:
                 # Check if there is at least one ground truth in the video associated.
                 ground_truth_videoid = ground_truth_gbvn.get_group(
-                    this_pred['video-id'])
+                    this_pred['video-id'])  # Get all the gt corresponding to the video_id of the current prediction
             except Exception as e:
                 fp[:, idx] = 1
                 continue
@@ -647,27 +599,26 @@ class MPEblinkEval:
             # We would like to retrieve the predictions with highest tiou score.
             tiou_sorted_idx = tiou_arr.argsort()[::-1]
             for tidx, tiou_thr in enumerate(tiou_thresholds):
-                for jdx in tiou_sorted_idx:
+                for jdx in tiou_sorted_idx:  # Traverse in order of tIoU from largest to smallest
                     if tiou_arr[jdx] < tiou_thr:
-                        fp[tidx, idx] = 1
+                        fp[tidx, idx] = 1  # If it is less than iou threshold then it is directly considered as FP
                         break
-                    #print(tidx, int(this_gt.loc[jdx]['index'])
                     if lock_gt[
-                        tidx, int(this_gt.loc[jdx]['index'])] >= 0:
+                        tidx, this_gt.loc[jdx]['index']] >= 0:  # If it is matched, then continue and see if the next gt with a slightly smaller tIoU can meet the threshold condition and has not been matched.
                         continue
                     # Assign as true positive after the filters above.
-                    tp[tidx, idx] = 1
-                    lock_gt[tidx, int(this_gt.loc[jdx]['index'])] = idx
+                    tp[tidx, idx] = 1  # Under this iou_threshold, this sample is TP
+                    lock_gt[tidx, this_gt.loc[jdx]['index']] = idx  # Under this iou_threshold, lock this gt, which means it has been matched
                     break
 
-                if fp[tidx, idx] == 0 and tp[tidx, idx] == 0:
+                if fp[tidx, idx] == 0 and tp[tidx, idx] == 0:  # If a gt meets the threshold condition but has already been matched, the prediction is still FP
                     fp[tidx, idx] = 1
 
-        tp_cumsum = np.cumsum(tp, axis=1).astype(np.float64)
-        fp_cumsum = np.cumsum(fp, axis=1).astype(np.float64)
-        recall_cumsum = tp_cumsum / npos
+        tp_cumsum = np.cumsum(tp, axis=1).astype(np.float)
+        fp_cumsum = np.cumsum(fp, axis=1).astype(np.float)
+        recall_cumsum = tp_cumsum / npos  # Get the recall at each confidence level
 
-        precision_cumsum = tp_cumsum / (tp_cumsum + fp_cumsum)
+        precision_cumsum = tp_cumsum / (tp_cumsum + fp_cumsum)  # Get the precision at each confidence level
 
         for tidx in range(len(tiou_thresholds)):
             ap[tidx] = self.interpolated_prec_rec(precision_cumsum[tidx, :], recall_cumsum[tidx, :])
@@ -701,9 +652,6 @@ class MPEblinkEval:
         # over union of two segments.
         tIoU = segments_intersection.astype(float) / segments_union
 
-        #     print(1)
-        #     index = np.argwhere(segments_union <= 0)
-        #     tIoU[index] = 0
         return tIoU
 
     def interpolated_prec_rec(self,prec, rec):
@@ -723,9 +671,9 @@ class MPEblinkEval:
         '''
         def _summarize( ap=1, iouThr=None, areaRng='all', maxDets=100 ):
             p = self.params
-            iStr = ' {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.4f}'
-            titleStr = 'Average Precision' if ap == 1 else 'Average Recall'
-            typeStr = '(AP)' if ap==1 else '(AR)'
+            iStr = '{:<7} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.4f}'
+            titleStr = 'Inst-AP' if ap == 1 else 'Average Recall'
+            typeStr = '' if ap==1 else '(AR)'
             iouStr = '{:0.2f}:{:0.2f}'.format(p.iouThrs[0], p.iouThrs[-1]) \
                 if iouThr is None else '{:0.2f}'.format(iouThr)
 
@@ -749,23 +697,24 @@ class MPEblinkEval:
             if len(s[s>-1])==0:
                 mean_s = -1
             else:
-                mean_s = np.mean(s[s>-1])
-            logger.info(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+                mean_s = np.mean(s[s>-1])   # Weighted average
+            print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
             return mean_s
         def _summarizeDets():
-            stats = np.zeros((12,))
-            stats[0] = _summarize(1)
-            stats[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2])
+            # stats = np.zeros((12,))
+            stats = np.zeros((3,))
+            stats[0] = _summarize(1)    # area=all,max_det=100，AP 0.5:0.95
+            stats[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2]) # AP@0.5
             stats[2] = _summarize(1, iouThr=.75, maxDets=self.params.maxDets[2])
-            stats[3] = _summarize(1, areaRng='small', maxDets=self.params.maxDets[2])
-            stats[4] = _summarize(1, areaRng='medium', maxDets=self.params.maxDets[2])
-            stats[5] = _summarize(1, areaRng='large', maxDets=self.params.maxDets[2])
-            stats[6] = _summarize(0, maxDets=self.params.maxDets[0])
-            stats[7] = _summarize(0, maxDets=self.params.maxDets[1])
-            stats[8] = _summarize(0, maxDets=self.params.maxDets[2])
-            stats[9] = _summarize(0, areaRng='small', maxDets=self.params.maxDets[2])
-            stats[10] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
-            stats[11] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
+            # stats[3] = _summarize(1, areaRng='small', maxDets=self.params.maxDets[2])
+            # stats[4] = _summarize(1, areaRng='medium', maxDets=self.params.maxDets[2])
+            # stats[5] = _summarize(1, areaRng='large', maxDets=self.params.maxDets[2])
+            # stats[6] = _summarize(0, maxDets=self.params.maxDets[0])
+            # stats[7] = _summarize(0, maxDets=self.params.maxDets[1])
+            # stats[8] = _summarize(0, maxDets=self.params.maxDets[2])
+            # stats[9] = _summarize(0, areaRng='small', maxDets=self.params.maxDets[2])
+            # stats[10] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
+            # stats[11] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
             return stats
         def _summarizeKps():
             stats = np.zeros((10,))
