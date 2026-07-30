@@ -1,6 +1,6 @@
 _base_ = [
-    '../_base_/datasets/mpeblink_v2.py',
-    '../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py'
+    '../_base_/datasets/mpeblink_v2.py', '../_base_/schedules/schedule_1x.py',
+    '../_base_/default_runtime.py'
 ]
 num_stages = 4
 num_proposals = 50
@@ -15,7 +15,6 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
-        # init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
         init_cfg=None),
     neck=dict(
         type='FPN',
@@ -49,7 +48,7 @@ model = dict(
                 num_reg_fcs=3,
                 feedforward_channels=2048,
                 in_channels=256,
-                with_eye_query = True,
+                with_eye_query=True,
                 dropout=0.0,
                 ffn_act_cfg=dict(type='ReLU', inplace=True),
                 dynamic_conv_cfg=dict(
@@ -83,13 +82,8 @@ model = dict(
                     use_sigmoid=True,
                     gamma=2.0,
                     alpha=0.25,
-                    loss_weight=10.0)
-
-            ) for _ in range(num_stages)
-
-        ]
-    ),
-    # training and testing settings
+                    loss_weight=10.0)) for _ in range(num_stages)
+        ]),
     train_cfg=dict(
         rpn=None,
         rcnn=[
@@ -105,16 +99,10 @@ model = dict(
                 mask_size=28,
             ) for _ in range(num_stages)
         ]),
-    test_cfg=dict(
-        rpn=None, rcnn=dict(max_per_img=30, mask_thr_binary=0.5)))
-        
-my_infer_cfg=dict(
-    person_threshold = 0.2,
-    clip_len = 36
-)    
-        
+    test_cfg=dict(rpn=None, rcnn=dict(max_per_img=30, mask_thr_binary=0.5)))
 
-# optimizer
+my_infer_cfg = dict(person_threshold=0.2, clip_len=36)
+
 optimizer = dict(
     _delete_=True,
     type='AdamW',
@@ -124,9 +112,7 @@ optimizer = dict(
         custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
 optimizer_config = dict(
     _delete_=True, grad_clip=dict(max_norm=0.1, norm_type=2))
-# learning policy
 lr_config = dict(policy='step', step=[6000, 9000], warmup_iters=1000)
 runner = dict(_delete_=True, type='IterBasedRunner', max_iters=10000)
 checkpoint_config = dict(interval=1000)
-# evaluation = dict(interval=1000, metric='segm')
 work_dir = './work_dirs/instblink_plus_abla/abla_full_model'

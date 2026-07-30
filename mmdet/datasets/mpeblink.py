@@ -69,18 +69,17 @@ class MPEblinkDataset(CustomDataset):
             self._set_group_flag()
         print(f'origin__num = {len(self.data_infos)}')
         # processing pipeline
-        self.data_infos_found = set(self.data_infos)
         self.pipeline = Compose(pipeline)
 
     def load_annotations(self, ann_file):
-        self.mpeblink = MPEblink(ann_file)
+        self.mpeblink = MPEblink(ann_file)   # mpeblink api to read gt json file
         self.cat_ids = self.mpeblink.getCatIds()
-        self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)}
-        vid_ids = self.mpeblink.getVidIds()
+        self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)} # Mapping relationship between categories and labels
+        vid_ids = self.mpeblink.getVidIds() # a list of all videos
 
         vid_infos = []
         for i in vid_ids:
-            info = self.mpeblink.loadVids([i])[0]
+            info = self.mpeblink.loadVids([i])[0] # Load the basic information of the video with the current video id
             info['filenames'] = info['file_names']
             vid_infos.append(info)
         self.vid_infos = vid_infos
@@ -108,14 +107,14 @@ class MPEblinkDataset(CustomDataset):
 
     def _filter_imgs(self, min_size=32):
         """Filter images too small or without ground truths."""
-        """Filter images too small or without ground truths."""
+        valid_inds = []
         ids_with_ann = []
 
         if self.filter_empty_gt:
             for i, (vid, frame_id) in enumerate(self.data_infos):
                 vid_id = self.vid_infos[vid]['id']
-                ann_ids = self.mpeblink.getAnnIds(vidIds=[vid_id])
-                ann_info = self.mpeblink.loadAnns(ann_ids)
+                ann_ids = self.mpeblink.getAnnIds(vidIds=[vid_id]) # return anno ids within this vid_id
+                ann_info = self.mpeblink.loadAnns(ann_ids) # obtain annotations based on the anno ids
                 anns = [
                     ann['bboxes'][frame_id] for ann in ann_info
                     if ann['bboxes'][frame_id] is not None
@@ -145,7 +144,7 @@ class MPEblinkDataset(CustomDataset):
 
     def get_ann_info(self, idx):
         vid, frame_id = self.data_infos[idx]
-        vid_id = self.vid_infos[vid]['id']
+        vid_id = self.vid_infos[vid]['id'] 
         ann_ids = self.mpeblink.getAnnIds(vidIds=[vid_id])
         ann_info = self.mpeblink.loadAnns(ann_ids)
         return self._parse_ann_info(ann_info, frame_id)
@@ -158,7 +157,7 @@ class MPEblinkDataset(CustomDataset):
         return [ann['category_id'] for ann in ann_info]
 
     def _parse_ann_info(self, ann_info, frame_id):
-        """Parse bbox and mask annotation.
+        """Parse bbox and eyeblink annotation.
 
         Args:
             ann_info (list[dict]): Annotation info of an image.
@@ -175,7 +174,7 @@ class MPEblinkDataset(CustomDataset):
         gt_bboxes_ignore = []
         gt_blinks = []
 
-        for i, ann in enumerate(ann_info):
+        for i, ann in enumerate(ann_info):  # for each instance
             bbox = ann['bboxes'][frame_id]
             # area = ann['areas'][frame_id]
             if bbox is None:
@@ -190,11 +189,11 @@ class MPEblinkDataset(CustomDataset):
             else:
                 gt_bboxes.append(bbox)
                 gt_ids.append(ann['id'] -
-                              1)
+                              1)  # mpeblink instance id start from 1. 1 --> 0
                 gt_labels.append(self.cat2label[ann['category_id']])
                 gt_blinks.append(ann['blinks_binary'][frame_id])
         if gt_bboxes:
-            gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
+            gt_bboxes = np.array(gt_bboxes, dtype=np.float32) # list --> numpy array
             gt_labels = np.array(gt_labels, dtype=np.int64)
             gt_blinks = np.array(gt_blinks, dtype=np.int64)
         else:
@@ -241,10 +240,11 @@ class MPEblinkDataset(CustomDataset):
         valid_idxs = []
         for i in sample_range:
             valid_idx = (vid, i)
-            if valid_idx in self.data_infos_found:
+            if valid_idx in self.data_infos:
                 valid_idxs.append(valid_idx)
         assert len(valid_idxs) > 0
-        frame_interval = 2
+        # obtain the index of the sampling frames, based on the center idx
+        frame_interval = 2  # sampling rate
         index_pre = [(vid, frame_id - frame_interval*i) for i in range(1, self.clip_length//2 + 1) if (frame_id - frame_interval*i) >= valid_idxs[0][1] and (vid,frame_id - frame_interval*i) in valid_idxs ]
         pre_res = [(vid, valid_idxs[0][1]) for i in range(0, self.clip_length//2 - len(index_pre))]
         index_pre = index_pre + pre_res

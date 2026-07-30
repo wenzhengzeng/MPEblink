@@ -32,7 +32,7 @@ class BaseRoIExtractor(BaseModule, metaclass=ABCMeta):
     @property
     def num_inputs(self):
         """int: Number of input feature maps."""
-        """int: Number of input feature maps."""
+        return len(self.featmap_strides)
 
     def build_roi_layers(self, layer_cfg, featmap_strides):
         """Build RoI operator to extract feature from each level feature map.

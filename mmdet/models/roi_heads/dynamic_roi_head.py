@@ -13,7 +13,7 @@ EPS = 1e-15
 @HEADS.register_module()
 class DynamicRoIHead(StandardRoIHead):
     """RoI head for `Dynamic R-CNN <https://arxiv.org/abs/2004.06002>`_."""
-    """RoI head for `Dynamic R-CNN <https://arxiv.org/abs/2004.06002>`_."""
+
     def __init__(self, **kwargs):
         super(DynamicRoIHead, self).__init__(**kwargs)
         assert isinstance(self.bbox_head.loss_bbox, SmoothL1Loss)

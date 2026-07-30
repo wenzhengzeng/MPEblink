@@ -49,30 +49,30 @@ class SCNetRoIHead(CascadeRoIHead):
 
     def init_mask_head(self, mask_roi_extractor, mask_head):
         """Initialize ``mask_head``"""
-        """Initialize ``mask_head``"""
+        if mask_roi_extractor is not None:
             self.mask_roi_extractor = build_roi_extractor(mask_roi_extractor)
             self.mask_head = build_head(mask_head)
 
     @property
     def with_semantic(self):
         """bool: whether the head has semantic head"""
-        """bool: whether the head has semantic head"""
+        return hasattr(self,
                        'semantic_head') and self.semantic_head is not None
 
     @property
     def with_feat_relay(self):
         """bool: whether the head has feature relay head"""
-        """bool: whether the head has feature relay head"""
+        return (hasattr(self, 'feat_relay_head')
                 and self.feat_relay_head is not None)
 
     @property
     def with_glbctx(self):
         """bool: whether the head has global context head"""
-        """bool: whether the head has global context head"""
+        return hasattr(self, 'glbctx_head') and self.glbctx_head is not None
 
     def _fuse_glbctx(self, roi_feats, glbctx_feat, rois):
         """Fuse global context feats with roi feats."""
-        """Fuse global context feats with roi feats."""
+        assert roi_feats.size(0) == rois.size(0)
         img_inds = torch.unique(rois[:, 0].cpu(), sorted=True).long()
         fused_feats = torch.zeros_like(roi_feats)
         for img_id in img_inds:
@@ -82,7 +82,7 @@ class SCNetRoIHead(CascadeRoIHead):
 
     def _slice_pos_feats(self, feats, sampling_results):
         """Get features from pos rois."""
-        """Get features from pos rois."""
+        num_rois = [res.bboxes.size(0) for res in sampling_results]
         num_pos_rois = [res.pos_bboxes.size(0) for res in sampling_results]
         inds = torch.zeros(sum(num_rois), dtype=torch.bool)
         start = 0
@@ -100,7 +100,7 @@ class SCNetRoIHead(CascadeRoIHead):
                       semantic_feat=None,
                       glbctx_feat=None):
         """Box head forward function used in both training and testing."""
-        """Box head forward function used in both training and testing."""
+        bbox_roi_extractor = self.bbox_roi_extractor[stage]
         bbox_head = self.bbox_head[stage]
         bbox_feats = bbox_roi_extractor(
             x[:len(bbox_roi_extractor.featmap_strides)], rois)
@@ -129,7 +129,7 @@ class SCNetRoIHead(CascadeRoIHead):
                       glbctx_feat=None,
                       relayed_feat=None):
         """Mask head forward function used in both training and testing."""
-        """Mask head forward function used in both training and testing."""
+        mask_feats = self.mask_roi_extractor(
             x[:self.mask_roi_extractor.num_inputs], rois)
         if self.with_semantic and semantic_feat is not None:
             mask_semantic_feat = self.semantic_roi_extractor([semantic_feat],
@@ -157,7 +157,7 @@ class SCNetRoIHead(CascadeRoIHead):
                             semantic_feat=None,
                             glbctx_feat=None):
         """Run forward function and calculate loss for box head in training."""
-        """Run forward function and calculate loss for box head in training."""
+        bbox_head = self.bbox_head[stage]
         rois = bbox2roi([res.bboxes for res in sampling_results])
         bbox_results = self._bbox_forward(
             stage,

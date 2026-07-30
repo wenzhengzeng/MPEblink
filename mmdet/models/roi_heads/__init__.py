@@ -2,8 +2,7 @@
 from .base_roi_head import BaseRoIHead
 from .bbox_heads import (BBoxHead, ConvFCBBoxHead, DIIHead,
                          DoubleConvFCBBoxHead, SABLHead, SCNetBBoxHead,
-                         Shared2FCBBoxHead, Shared4Conv1FCBBoxHead,
-                         STQIHead, STCQIHead)
+                         Shared2FCBBoxHead, Shared4Conv1FCBBoxHead)
 from .cascade_roi_head import CascadeRoIHead
 from .double_roi_head import DoubleHeadRoIHead
 from .dynamic_roi_head import DynamicRoIHead
@@ -12,7 +11,7 @@ from .htc_roi_head import HybridTaskCascadeRoIHead
 from .mask_heads import (CoarseMaskHead, FCNMaskHead, FeatureRelayHead,
                          FusedSemanticHead, GlobalContextHead, GridHead,
                          HTCMaskHead, MaskIoUHead, MaskPointHead,
-                         SCNetMaskHead, SCNetSemanticHead, BlinkHead, BlinkFusionHead)
+                         SCNetMaskHead, SCNetSemanticHead)
 from .mask_scoring_roi_head import MaskScoringRoIHead
 from .pisa_roi_head import PISARoIHead
 from .point_rend_roi_head import PointRendRoIHead
@@ -24,7 +23,8 @@ from .sparse_roi_head import SparseRoIHead
 from .standard_roi_head import StandardRoIHead
 from .trident_roi_head import TridentRoIHead
 from .instblink_roi_head import InstBlinkRoIHead
-from .instblink_plus_roi_head_only_eyeq_blink import InstBlinkPlusRoIHead_Only_Eyeq_Blink
+from .instblink_plus_roi_head_only_eyeq_blink import (
+    InstBlinkPlusRoIHead_Only_Eyeq_Blink)
 
 __all__ = [
     'BaseRoIHead', 'CascadeRoIHead', 'DoubleHeadRoIHead', 'MaskScoringRoIHead',
@@ -36,6 +36,6 @@ __all__ = [
     'SingleRoIExtractor', 'PISARoIHead', 'PointRendRoIHead', 'MaskPointHead',
     'CoarseMaskHead', 'DynamicRoIHead', 'SparseRoIHead', 'TridentRoIHead',
     'SCNetRoIHead', 'SCNetMaskHead', 'SCNetSemanticHead', 'SCNetBBoxHead',
-    'FeatureRelayHead', 'GlobalContextHead', 'BlinkHead', 'BlinkFusionHead',
-    'STQIHead', 'STCQIHead', 'InstBlinkRoIHead', 'InstBlinkPlusRoIHead_Only_Eyeq_Blink'
+    'FeatureRelayHead', 'GlobalContextHead', 'InstBlinkRoIHead',
+    'InstBlinkPlusRoIHead_Only_Eyeq_Blink'
 ]

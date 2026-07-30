@@ -8,7 +8,7 @@ class STQIHead(DIIHead):
         super(STQIHead, self).__init__(*args, **kwargs)
     
     @auto_fp16()
-    def forward(self, roi_feat, proposal_feat, clip_length, stage = 0):
+    def forward(self, roi_feat, proposal_feat, clip_length):
         """Forward function of Dynamic Instance Interactive Head.
 
         Args:
@@ -34,32 +34,35 @@ class STQIHead(DIIHead):
                       (batch_size, num_proposal, feature_dimensions).
         """
         N, num_proposals, d = proposal_feat.shape
-        proposal_feat = proposal_feat.permute(1, 0, 2)
+        # sptial self-attention 
+        proposal_feat = proposal_feat.permute(1, 0, 2) # [b*t,num_proposals,256] --> [num_proposals,b*t,256]  regards b*t as batch and do self attention across proposals within the same frame
         proposal_feat = self.attention_norm(self.attention(proposal_feat))
 
-        proposal_feat = proposal_feat.permute(1, 0, 2)
+        proposal_feat = proposal_feat.permute(1, 0, 2) # [num_proposals,b*t,256] --> [b*t,num_proposals,256]
 
+
+        # Temporal self-atten
         proposal_feat = proposal_feat.resize(N // clip_length, clip_length,
                                              num_proposals,
                                              d).permute(1, 0, 2, 3) # [b*t,num_proposals,256] --> [t,b,num_proposals,256]
         proposal_feat = proposal_feat.resize(clip_length,
                                              N * num_proposals // clip_length,
-                                             d)
+                                             d) # [t,b,num_proposals,256] --> [t,b*num_proposals,256], regards b*num_proposal as batch and do self attention across frame (time) within one query
         proposal_feat = self.attention_norm(self.attention(proposal_feat))
         proposal_feat = proposal_feat.resize(clip_length, N // clip_length,
                                              num_proposals,
                                              d).permute(1, 0, 2, 3) # [t,b*num_proposals,256] --> [b,t,num_proposals,256]
-        proposal_feat = proposal_feat.resize(N, num_proposals, d)
+        proposal_feat = proposal_feat.resize(N, num_proposals, d) # [b,t,num_proposals,256] --> [b*t,num_proposals,256] 
         
         attn_feats = proposal_feat
 
         # instance interactive
         proposal_feat = attn_feats.reshape(-1, self.in_channels) # [b*t,num_proposals,256] --> [b*t*num_proposals,256]
         proposal_feat_iic = self.instance_interactive_conv(
-            proposal_feat, roi_feat, stage)
+            proposal_feat, roi_feat) # dynamic conv, take proposal_feat as filter, apply on the roi_feat
         proposal_feat = proposal_feat + self.instance_interactive_conv_dropout(
-            proposal_feat_iic)
-        obj_feat = self.instance_interactive_conv_norm(proposal_feat)
+            proposal_feat_iic) # Residual connection，similar to detr decoder
+        obj_feat = self.instance_interactive_conv_norm(proposal_feat) # a layer norm
 
         # FFN
         obj_feat = self.ffn_norm(self.ffn(obj_feat))
@@ -67,7 +70,7 @@ class STQIHead(DIIHead):
         cls_feat = obj_feat # [b*t*num_proposal, 256]
         reg_feat = obj_feat
 
-        for cls_layer in self.cls_fcs:
+        for cls_layer in self.cls_fcs:  # fc+layer_norm+relu
             cls_feat = cls_layer(cls_feat)
         for reg_layer in self.reg_fcs:  #  3* fc+layer_norm+relu
             reg_feat = reg_layer(reg_feat)

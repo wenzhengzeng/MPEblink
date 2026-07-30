@@ -1,32 +1,61 @@
 import json
-import time
+from argparse import ArgumentParser
+from pathlib import Path
 
-print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
-eyeblink_threshold = 0.3
-results = json.load(open('results/results_instblink_r50_test.json','r'))
-filtered_results = []
-for query in results:
-    blinks_converted = []
-    eyeblink_buffer = []
-    for index in range(0, len(query['blink_scores'])):
-        if query['blink_scores'][index] >= eyeblink_threshold and eyeblink_buffer == []:
-            eyeblink_buffer.append(index)
-        if query['blink_scores'][index] < eyeblink_threshold and eyeblink_buffer != []:
-            sum = 0
-            for i in range(eyeblink_buffer[0],index):     
-                sum +=query['blink_scores'][i]
-            avg_score = sum/(index-eyeblink_buffer[0])
-            blinks_converted.extend([[eyeblink_buffer[0] , index - 1, avg_score]])
-            eyeblink_buffer = []
-        if (index == len(query['blink_scores']) - 1) and eyeblink_buffer != []: # If it is an end frame
-            sum = 0
-            for i in range(eyeblink_buffer[0], index+1):
-                sum += query['blink_scores'][i]
-            avg_score = sum / (index - eyeblink_buffer[0]+1)
-            blinks_converted.extend([[eyeblink_buffer[0], index, avg_score]])
-            eyeblink_buffer = []
-    query.update({'blinks_converted': blinks_converted})
-    filtered_results.append(query)
-json.dump(filtered_results, open('results/results_blink_converted.json', 'w'))
-print('Done')
-print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+
+def parse_args():
+    parser = ArgumentParser(
+        description='Convert frame-level blink scores into blink intervals.')
+    parser.add_argument(
+        'input',
+        nargs='?',
+        default='results/results_instblink_r50_test.json',
+        help='Input prediction JSON file.')
+    parser.add_argument(
+        'output',
+        nargs='?',
+        default='results/results_blink_converted.json',
+        help='Output JSON file.')
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.3,
+        help='Frame-level blink score threshold.')
+    return parser.parse_args()
+
+
+def scores_to_intervals(scores, threshold):
+    intervals = []
+    start = None
+    for index, score in enumerate(scores):
+        if score >= threshold and start is None:
+            start = index
+        if score < threshold and start is not None:
+            average = sum(scores[start:index]) / (index - start)
+            intervals.append([start, index - 1, average])
+            start = None
+
+    if start is not None:
+        average = sum(scores[start:]) / (len(scores) - start)
+        intervals.append([start, len(scores) - 1, average])
+    return intervals
+
+
+def main():
+    args = parse_args()
+    with open(args.input, encoding='utf-8') as source:
+        results = json.load(source)
+
+    for query in results:
+        query['blinks_converted'] = scores_to_intervals(
+            query['blink_scores'], args.threshold)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w', encoding='utf-8') as destination:
+        json.dump(results, destination)
+    print(f'Wrote {output_path}')
+
+
+if __name__ == '__main__':
+    main()

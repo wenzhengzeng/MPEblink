@@ -19,6 +19,8 @@ class EmbeddingRPNHead(BaseModule):
         num_proposals (int): Number of init_proposals. Default 100.
         proposal_feature_channel (int): Channel number of
             init_proposal_feature. Defaults to 256.
+        with_eye_query (bool): Whether to initialize an additional eye-query
+            proposal for every instance proposal. Defaults to False.
         init_cfg (dict or list[dict], optional): Initialization config dict.
             Default: None
     """
@@ -26,12 +28,14 @@ class EmbeddingRPNHead(BaseModule):
     def __init__(self,
                  num_proposals=100,
                  proposal_feature_channel=256,
+                 with_eye_query=False,
                  init_cfg=None,
                  **kwargs):
         assert init_cfg is None, 'To prevent abnormal initialization ' \
                                  'behavior, init_cfg is not allowed to be set'
         super(EmbeddingRPNHead, self).__init__(init_cfg)
-        self.num_proposals = num_proposals
+        self.with_eye_query = with_eye_query
+        self.num_proposals = num_proposals * (2 if with_eye_query else 1)
         self.proposal_feature_channel = proposal_feature_channel
         self._init_layers()
 
